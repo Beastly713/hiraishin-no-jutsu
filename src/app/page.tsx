@@ -45,6 +45,8 @@ export default function Home() {
     return selectedFiles.reduce((sum, file) => sum + file.size, 0);
   }, [selectedFiles]);
 
+  const isReadyToCreateLink = selectedFiles.length > 0;
+
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="mx-auto flex min-h-screen max-w-5xl flex-col items-center justify-center px-6 py-12">
@@ -58,7 +60,7 @@ export default function Home() {
           </h1>
 
           <p className="mt-6 text-base leading-7 text-zinc-300 sm:text-lg">
-            A peer-to-peer file sharing app . Fast,
+            A peer-to-peer file sharing app. Fast,
             browser-based, and simple.
           </p>
         </div>
@@ -132,6 +134,27 @@ export default function Home() {
                 </ul>
               </div>
             )}
+
+            <div className="mt-8 w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-4 text-left">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-zinc-200">
+                    Transfer link
+                  </p>
+                  <p className="mt-1 text-xs text-zinc-400">
+                    Link creation will be wired up in upcoming commits.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={!isReadyToCreateLink}
+                  className="inline-flex items-center rounded-full px-5 py-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500 enabled:bg-zinc-100 enabled:text-zinc-950 enabled:hover:bg-zinc-200"
+                >
+                  Create link
+                </button>
+              </div>
+            </div>
           </div>
         </section>
       </div>
