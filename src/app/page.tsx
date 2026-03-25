@@ -8,8 +8,12 @@ import { TransferCard } from "@/components/transfer-card";
 import { TransferConnectionCard } from "@/components/transfer-connection-card";
 import { formatBytes } from "@/lib/format";
 import { createPeerId } from "@/lib/peer";
-import { TransferFileSummary, TransferSession } from "@/types/session";
 import { createTransferConnectionState } from "@/lib/transfer-connection";
+import {
+  SenderSessionKeepaliveStatus,
+  TransferFileSummary,
+  TransferSession,
+} from "@/types/session";
 import { TransferConnectionState } from "@/types/transfer-connection";
 
 const SESSION_TOUCH_INTERVAL_MS = 30000;
@@ -29,6 +33,9 @@ export default function Home() {
   const [isCreatingLink, setIsCreatingLink] = useState(false);
   const [createLinkError, setCreateLinkError] = useState<string | null>(null);
   const [senderPeerId] = useState(() => createPeerId());
+  const [keepaliveStatus, setKeepaliveStatus] =
+    useState<SenderSessionKeepaliveStatus>("idle");
+  const [lastKeepaliveAt, setLastKeepaliveAt] = useState<string | null>(null);
   const [connection, setConnection] = useState<TransferConnectionState>(() => {
     const state = createTransferConnectionState({ role: "sender" });
 
@@ -89,11 +96,14 @@ export default function Home() {
         }
 
         setSession(data as TransferSession);
+        setKeepaliveStatus("active");
+        setLastKeepaliveAt(new Date().toISOString());
       } catch {
         if (isCancelled) {
           return;
         }
 
+        setKeepaliveStatus("error");
         setConnection((current) => ({
           ...current,
           status: "failed",
@@ -112,6 +122,21 @@ export default function Home() {
     };
   }, [session?.id]);
 
+  const resetSenderState = () => {
+    setSession(null);
+    setHasCopiedLink(false);
+    setCreateLinkError(null);
+    setKeepaliveStatus("idle");
+    setLastKeepaliveAt(null);
+    setConnection((current) => ({
+      ...current,
+      sessionId: null,
+      remotePeerId: null,
+      status: "idle",
+      errorMessage: null,
+    }));
+  };
+
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
 
@@ -120,16 +145,7 @@ export default function Home() {
     }
 
     setSelectedFiles(Array.from(files));
-    setSession(null);
-    setHasCopiedLink(false);
-    setCreateLinkError(null);
-    setConnection((current) => ({
-      ...current,
-      sessionId: null,
-      remotePeerId: null,
-      status: "idle",
-      errorMessage: null,
-    }));
+    resetSenderState();
   };
 
   const handleChooseFiles = () => {
@@ -138,16 +154,7 @@ export default function Home() {
 
   const handleClearSelection = () => {
     setSelectedFiles([]);
-    setSession(null);
-    setHasCopiedLink(false);
-    setCreateLinkError(null);
-    setConnection((current) => ({
-      ...current,
-      sessionId: null,
-      remotePeerId: null,
-      status: "idle",
-      errorMessage: null,
-    }));
+    resetSenderState();
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -162,6 +169,8 @@ export default function Home() {
     setIsCreatingLink(true);
     setCreateLinkError(null);
     setHasCopiedLink(false);
+    setKeepaliveStatus("idle");
+    setLastKeepaliveAt(null);
     setConnection((current) => ({
       ...current,
       status: "connecting",
@@ -197,6 +206,8 @@ export default function Home() {
       const nextSession = data as TransferSession;
 
       setSession(nextSession);
+      setKeepaliveStatus("active");
+      setLastKeepaliveAt(new Date().toISOString());
       setConnection((current) => ({
         ...current,
         sessionId: nextSession.id,
@@ -213,6 +224,8 @@ export default function Home() {
 
       setSession(null);
       setCreateLinkError(errorMessage);
+      setKeepaliveStatus("error");
+      setLastKeepaliveAt(null);
       setConnection((current) => ({
         ...current,
         sessionId: null,
@@ -303,7 +316,12 @@ export default function Home() {
           <TransferConnectionCard connection={connection} />
 
           {session && (
-            <SessionSummaryCard session={session} formatBytes={formatBytes} />
+            <SessionSummaryCard
+              session={session}
+              formatBytes={formatBytes}
+              keepaliveStatus={keepaliveStatus}
+              lastKeepaliveAt={lastKeepaliveAt}
+            />
           )}
         </div>
       </section>

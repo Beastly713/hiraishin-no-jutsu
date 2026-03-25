@@ -6,6 +6,8 @@ export type TransferFileSummary = {
 
 export type TransferSessionStatus = "ready";
 
+export type SenderSessionKeepaliveStatus = "idle" | "active" | "error";
+
 export type TransferSession = {
   id: string;
   senderPeerId: string;
