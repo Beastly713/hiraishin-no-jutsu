@@ -1,6 +1,23 @@
 "use client";
 
-import { ChangeEvent, useState } from "react";
+import { ChangeEvent, useMemo, useState } from "react";
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1024;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${value.toFixed(1)} ${units[unitIndex]}`;
+}
 
 export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -14,6 +31,10 @@ export default function Home() {
 
     setSelectedFiles(Array.from(files));
   };
+
+  const totalSize = useMemo(() => {
+    return selectedFiles.reduce((sum, file) => sum + file.size, 0);
+  }, [selectedFiles]);
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -64,17 +85,26 @@ export default function Home() {
               </p>
             ) : (
               <div className="mt-8 w-full max-w-md text-left">
-                <p className="mb-3 text-sm font-medium text-zinc-300">
-                  Selected files
-                </p>
+                <div className="mb-4 flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm">
+                  <span className="text-zinc-300">
+                    {selectedFiles.length} file
+                    {selectedFiles.length > 1 ? "s" : ""} selected
+                  </span>
+                  <span className="text-zinc-400">{formatBytes(totalSize)}</span>
+                </div>
 
                 <ul className="space-y-2">
                   {selectedFiles.map((file) => (
                     <li
                       key={`${file.name}-${file.size}`}
-                      className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-200"
+                      className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm"
                     >
-                      {file.name}
+                      <span className="truncate pr-4 text-zinc-200">
+                        {file.name}
+                      </span>
+                      <span className="shrink-0 text-zinc-400">
+                        {formatBytes(file.size)}
+                      </span>
                     </li>
                   ))}
                 </ul>
