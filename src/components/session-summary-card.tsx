@@ -21,6 +21,15 @@ function getKeepaliveStatusLabel(status: SenderSessionKeepaliveStatus) {
   }
 }
 
+function getSessionStatusLabel(status: TransferSession["status"]) {
+  switch (status) {
+    case "ready":
+      return "Ready";
+    case "closed":
+      return "Closed";
+  }
+}
+
 export function SessionSummaryCard({
   session,
   formatBytes,
@@ -37,6 +46,13 @@ export function SessionSummaryCard({
         <div className="flex items-center justify-between gap-4">
           <span className="text-zinc-400">Session ID</span>
           <span className="font-medium text-zinc-200">{session.id}</span>
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-zinc-400">Status</span>
+          <span className="font-medium text-zinc-200">
+            {getSessionStatusLabel(session.status)}
+          </span>
         </div>
 
         <div className="flex items-center justify-between gap-4">
@@ -82,7 +98,16 @@ export function SessionSummaryCard({
         </div>
       </div>
 
-      {keepaliveStatus === "error" && (
+      {session.status === "closed" && (
+        <div className="mt-4 rounded-xl border border-amber-900/60 bg-amber-950/40 px-4 py-3">
+          <p className="text-sm text-amber-200">
+            This transfer session is closed and no longer available to
+            receivers.
+          </p>
+        </div>
+      )}
+
+      {keepaliveStatus === "error" && session.status !== "closed" && (
         <div className="mt-4 rounded-xl border border-red-900/60 bg-red-950/40 px-4 py-3">
           <p className="text-sm text-red-200">
             Session keepalive failed. The link may expire unless it is renewed

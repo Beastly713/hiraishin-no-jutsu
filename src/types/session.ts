@@ -4,7 +4,7 @@ export type TransferFileSummary = {
   type: string;
 };
 
-export type TransferSessionStatus = "ready";
+export type TransferSessionStatus = "ready" | "closed";
 
 export type SenderSessionKeepaliveStatus = "idle" | "active" | "error";
 

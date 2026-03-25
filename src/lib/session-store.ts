@@ -105,7 +105,7 @@ export function touchTransferSession(id: string) {
 
   const isExpired = Date.parse(stored.session.expiresAt) <= Date.now();
 
-  if (isExpired) {
+  if (isExpired || stored.session.status === "closed") {
     clearTimeout(stored.timeoutId);
     getSessionStore().delete(id);
     return null;
@@ -114,9 +114,29 @@ export function touchTransferSession(id: string) {
   const nextSession: TransferSession = {
     ...stored.session,
     expiresAt: createExpiresAt(),
+    status: "ready",
   };
 
   storeTransferSession(nextSession);
+
+  return nextSession;
+}
+
+export function closeTransferSession(id: string) {
+  const stored = getSessionStore().get(id);
+
+  if (!stored) {
+    return null;
+  }
+
+  const nextSession: TransferSession = {
+    ...stored.session,
+    status: "closed",
+    expiresAt: new Date().toISOString(),
+  };
+
+  clearTimeout(stored.timeoutId);
+  getSessionStore().delete(id);
 
   return nextSession;
 }
