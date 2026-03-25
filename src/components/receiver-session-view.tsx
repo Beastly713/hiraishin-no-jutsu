@@ -22,6 +22,7 @@ export function ReceiverSessionView({
   const [receiverPeerId] = useState(() => createPeerId());
   const [session, setSession] = useState<TransferSession | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
+  const [retryNonce, setRetryNonce] = useState(0);
   const [connection, setConnection] = useState<TransferConnectionState>(() => ({
     ...createTransferConnectionState({
       role: "receiver",
@@ -52,7 +53,10 @@ export function ReceiverSessionView({
     async function loadSession() {
       setConnection((current) => ({
         ...current,
-        status: current.status === "waiting_for_peer" ? current.status : "resolving_session",
+        status:
+          current.status === "waiting_for_peer"
+            ? current.status
+            : "resolving_session",
         localPeerId: receiverPeerId,
         errorMessage: null,
       }));
@@ -116,6 +120,7 @@ export function ReceiverSessionView({
     }
 
     void loadSession();
+
     intervalId = window.setInterval(() => {
       void loadSession();
     }, SESSION_POLL_INTERVAL_MS);
@@ -127,7 +132,13 @@ export function ReceiverSessionView({
         window.clearInterval(intervalId);
       }
     };
-  }, [isValidId, receiverPeerId, sessionId]);
+  }, [isValidId, receiverPeerId, retryNonce, sessionId]);
+
+  const handleRetryLookup = () => {
+    setRetryNonce((current) => current + 1);
+  };
+
+  const isRetrying = connection.status === "resolving_session";
 
   return (
     <div className="w-full max-w-2xl rounded-3xl border border-zinc-800 bg-zinc-900/60 p-8 shadow-xl">
@@ -159,9 +170,7 @@ export function ReceiverSessionView({
             <p className="text-xs uppercase tracking-wide text-zinc-500">
               Session status
             </p>
-            <p className="mt-2 text-sm text-zinc-200">
-              Waiting for sender...
-            </p>
+            <p className="mt-2 text-sm text-zinc-200">Waiting for sender...</p>
             <p className="mt-1 text-xs text-zinc-400">
               Checking session availability every 5 seconds.
             </p>
@@ -177,6 +186,19 @@ export function ReceiverSessionView({
             <p className="mt-1 text-xs text-red-200/80">
               The link may be expired, invalid, or no longer available.
             </p>
+
+            {isValidId && (
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={handleRetryLookup}
+                  disabled={isRetrying}
+                  className="inline-flex items-center rounded-full border border-red-800 px-4 py-2 text-sm font-medium text-red-100 transition disabled:cursor-not-allowed disabled:opacity-60 enabled:hover:bg-red-900/30"
+                >
+                  {isRetrying ? "Retrying..." : "Retry now"}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
