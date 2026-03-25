@@ -25,11 +25,24 @@ export default async function ReceivePage({ params }: ReceivePageProps) {
           commits.
         </p>
 
-        <div className="mt-8 rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
-          <p className="text-xs uppercase tracking-wide text-zinc-500">
-            Session ID
-          </p>
-          <p className="mt-2 break-all text-sm text-zinc-200">{sessionId}</p>
+        <div className="mt-8 grid gap-4">
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
+            <p className="text-xs uppercase tracking-wide text-zinc-500">
+              Session ID
+            </p>
+            <p className="mt-2 break-all text-sm text-zinc-200">{sessionId}</p>
+          </div>
+
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
+            <p className="text-xs uppercase tracking-wide text-zinc-500">
+              Status
+            </p>
+            <p className="mt-2 text-sm text-zinc-200">Waiting for sender...</p>
+            <p className="mt-1 text-xs text-zinc-400">
+              In the next commits, this page will resolve session metadata and
+              begin peer connection setup.
+            </p>
+          </div>
         </div>
       </div>
     </PageShell>
