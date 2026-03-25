@@ -3,6 +3,7 @@
 import { ChangeEvent, useMemo, useRef, useState } from "react";
 import { FileList } from "@/components/file-list";
 import { PageShell } from "@/components/page-shell";
+import { SessionSummaryCard } from "@/components/session-summary-card";
 import { TransferCard } from "@/components/transfer-card";
 import { TransferSession } from "@/types/session";
 
@@ -140,6 +141,13 @@ export default function Home() {
             shareUrl={session?.shareUrl ?? null}
             onCreateLink={handleCreateLink}
           />
+
+          {session && (
+            <SessionSummaryCard
+              session={session}
+              formatBytes={formatBytes}
+            />
+          )}
         </div>
       </section>
     </PageShell>
