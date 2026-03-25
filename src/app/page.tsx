@@ -4,6 +4,7 @@ import { ChangeEvent, useMemo, useRef, useState } from "react";
 import { FileList } from "@/components/file-list";
 import { PageShell } from "@/components/page-shell";
 import { TransferCard } from "@/components/transfer-card";
+import { TransferSession } from "@/types/session";
 
 function formatBytes(bytes: number) {
   if (bytes < 1024) {
@@ -28,8 +29,12 @@ function createSessionId() {
 
 export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [session, setSession] = useState<TransferSession | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const totalSize = useMemo(() => {
+    return selectedFiles.reduce((sum, file) => sum + file.size, 0);
+  }, [selectedFiles]);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -39,12 +44,12 @@ export default function Home() {
     }
 
     setSelectedFiles(Array.from(files));
-    setShareUrl(null);
+    setSession(null);
   };
 
   const handleClearSelection = () => {
     setSelectedFiles([]);
-    setShareUrl(null);
+    setSession(null);
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -52,14 +57,16 @@ export default function Home() {
   };
 
   const handleCreateLink = () => {
-    const sessionId = createSessionId();
-    const url = `${window.location.origin}/receive/${sessionId}`;
-    setShareUrl(url);
-  };
+    const id = createSessionId();
 
-  const totalSize = useMemo(() => {
-    return selectedFiles.reduce((sum, file) => sum + file.size, 0);
-  }, [selectedFiles]);
+    setSession({
+      id,
+      shareUrl: `${window.location.origin}/receive/${id}`,
+      fileCount: selectedFiles.length,
+      totalSize,
+      createdAt: new Date().toISOString(),
+    });
+  };
 
   const isReadyToCreateLink = selectedFiles.length > 0;
 
@@ -130,7 +137,7 @@ export default function Home() {
 
           <TransferCard
             canCreateLink={isReadyToCreateLink}
-            shareUrl={shareUrl}
+            shareUrl={session?.shareUrl ?? null}
             onCreateLink={handleCreateLink}
           />
         </div>
