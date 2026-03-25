@@ -21,8 +21,13 @@ function formatBytes(bytes: number) {
   return `${value.toFixed(1)} ${units[unitIndex]}`;
 }
 
+function createSessionId() {
+  return crypto.randomUUID().slice(0, 8);
+}
+
 export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -33,14 +38,22 @@ export default function Home() {
     }
 
     setSelectedFiles(Array.from(files));
+    setShareUrl(null);
   };
 
   const handleClearSelection = () => {
     setSelectedFiles([]);
+    setShareUrl(null);
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
+  };
+
+  const handleCreateLink = () => {
+    const sessionId = createSessionId();
+    const url = `${window.location.origin}/receive/${sessionId}`;
+    setShareUrl(url);
   };
 
   const totalSize = useMemo(() => {
@@ -117,7 +130,11 @@ export default function Home() {
               />
             )}
 
-            <TransferCard canCreateLink={isReadyToCreateLink} />
+            <TransferCard
+              canCreateLink={isReadyToCreateLink}
+              shareUrl={shareUrl}
+              onCreateLink={handleCreateLink}
+            />
           </div>
         </section>
       </div>
