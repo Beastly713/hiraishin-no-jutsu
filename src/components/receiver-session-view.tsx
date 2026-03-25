@@ -14,7 +14,7 @@ type ReceiverSessionViewProps = {
   sessionId: string;
 };
 
-type SessionLookupResponse = TransferSession | { error?: string };
+const SESSION_POLL_INTERVAL_MS = 5000;
 
 export function ReceiverSessionView({
   sessionId,
@@ -47,12 +47,12 @@ export function ReceiverSessionView({
     }
 
     let isCancelled = false;
+    let intervalId: number | null = null;
 
     async function loadSession() {
-      setLookupError(null);
       setConnection((current) => ({
         ...current,
-        status: "resolving_session",
+        status: current.status === "waiting_for_peer" ? current.status : "resolving_session",
         localPeerId: receiverPeerId,
         errorMessage: null,
       }));
@@ -115,10 +115,17 @@ export function ReceiverSessionView({
       }
     }
 
-    loadSession();
+    void loadSession();
+    intervalId = window.setInterval(() => {
+      void loadSession();
+    }, SESSION_POLL_INTERVAL_MS);
 
     return () => {
       isCancelled = true;
+
+      if (intervalId !== null) {
+        window.clearInterval(intervalId);
+      }
     };
   }, [isValidId, receiverPeerId, sessionId]);
 
@@ -146,6 +153,20 @@ export function ReceiverSessionView({
         </div>
 
         <TransferConnectionCard connection={connection} />
+
+        {session && (
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
+            <p className="text-xs uppercase tracking-wide text-zinc-500">
+              Session status
+            </p>
+            <p className="mt-2 text-sm text-zinc-200">
+              Waiting for sender...
+            </p>
+            <p className="mt-1 text-xs text-zinc-400">
+              Checking session availability every 5 seconds.
+            </p>
+          </div>
+        )}
 
         {lookupError && (
           <div className="rounded-2xl border border-red-900/60 bg-red-950/40 px-4 py-4">
