@@ -5,28 +5,9 @@ import { FileList } from "@/components/file-list";
 import { PageShell } from "@/components/page-shell";
 import { SessionSummaryCard } from "@/components/session-summary-card";
 import { TransferCard } from "@/components/transfer-card";
+import { formatBytes } from "@/lib/format";
+import { createSessionId } from "@/lib/session";
 import { TransferSession } from "@/types/session";
-
-function formatBytes(bytes: number) {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-
-  const units = ["KB", "MB", "GB", "TB"];
-  let value = bytes / 1024;
-  let unitIndex = 0;
-
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-
-  return `${value.toFixed(1)} ${units[unitIndex]}`;
-}
-
-function createSessionId() {
-  return crypto.randomUUID().slice(0, 8);
-}
 
 export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
