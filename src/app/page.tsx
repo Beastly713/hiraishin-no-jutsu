@@ -9,10 +9,10 @@ import { TransferConnectionCard } from "@/components/transfer-connection-card";
 import { formatBytes } from "@/lib/format";
 import { createPeerId } from "@/lib/peer";
 import { TransferFileSummary, TransferSession } from "@/types/session";
-import {
-  createTransferConnectionState,
-} from "@/lib/transfer-connection";
+import { createTransferConnectionState } from "@/lib/transfer-connection";
 import { TransferConnectionState } from "@/types/transfer-connection";
+
+const SESSION_TOUCH_INTERVAL_MS = 30000;
 
 function toTransferFileSummary(file: File): TransferFileSummary {
   return {
@@ -55,6 +55,62 @@ export default function Home() {
 
     return () => window.clearTimeout(timeoutId);
   }, [hasCopiedLink]);
+
+  useEffect(() => {
+    if (!session?.id) {
+      return;
+    }
+
+    const sessionId = session.id;
+    let isCancelled = false;
+
+    async function touchSession() {
+      try {
+        const response = await fetch(`/api/sessions/${sessionId}/touch`, {
+          method: "POST",
+        });
+
+        const data: unknown = await response.json();
+
+        if (!response.ok) {
+          const errorMessage =
+            typeof data === "object" &&
+            data !== null &&
+            "error" in data &&
+            typeof data.error === "string"
+              ? data.error
+              : "Failed to keep transfer session active.";
+
+          throw new Error(errorMessage);
+        }
+
+        if (isCancelled) {
+          return;
+        }
+
+        setSession(data as TransferSession);
+      } catch {
+        if (isCancelled) {
+          return;
+        }
+
+        setConnection((current) => ({
+          ...current,
+          status: "failed",
+          errorMessage: "Failed to keep transfer session active.",
+        }));
+      }
+    }
+
+    const intervalId = window.setInterval(() => {
+      void touchSession();
+    }, SESSION_TOUCH_INTERVAL_MS);
+
+    return () => {
+      isCancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [session?.id]);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;

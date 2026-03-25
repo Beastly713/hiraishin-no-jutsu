@@ -6,7 +6,12 @@ import { createSessionId } from "@/lib/session";
 
 const SESSION_TTL_MS = 1000 * 60 * 60;
 
-type SessionStore = Map<string, TransferSession>;
+type StoredTransferSession = {
+  session: TransferSession;
+  timeoutId: ReturnType<typeof setTimeout>;
+};
+
+type SessionStore = Map<string, StoredTransferSession>;
 
 declare global {
   // eslint-disable-next-line no-var
@@ -25,6 +30,29 @@ function calculateTotalSize(files: CreateTransferSessionInput["files"]) {
   return files.reduce((sum, file) => sum + file.size, 0);
 }
 
+function createExpiresAt() {
+  return new Date(Date.now() + SESSION_TTL_MS).toISOString();
+}
+
+function scheduleSessionExpiry(sessionId: string) {
+  return setTimeout(() => {
+    getSessionStore().delete(sessionId);
+  }, SESSION_TTL_MS);
+}
+
+function storeTransferSession(session: TransferSession) {
+  const existing = getSessionStore().get(session.id);
+
+  if (existing) {
+    clearTimeout(existing.timeoutId);
+  }
+
+  getSessionStore().set(session.id, {
+    session,
+    timeoutId: scheduleSessionExpiry(session.id),
+  });
+}
+
 export function createTransferSession({
   senderPeerId,
   files,
@@ -32,7 +60,6 @@ export function createTransferSession({
 }: CreateTransferSessionInput): TransferSession {
   const id = createSessionId();
   const createdAt = new Date().toISOString();
-  const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
 
   const session: TransferSession = {
     id,
@@ -42,28 +69,54 @@ export function createTransferSession({
     fileCount: files.length,
     totalSize: calculateTotalSize(files),
     createdAt,
-    expiresAt,
+    expiresAt: createExpiresAt(),
     status: "ready",
   };
 
-  getSessionStore().set(id, session);
+  storeTransferSession(session);
 
   return session;
 }
 
 export function getTransferSession(id: string) {
-  const session = getSessionStore().get(id);
+  const stored = getSessionStore().get(id);
 
-  if (!session) {
+  if (!stored) {
     return null;
   }
 
-  const isExpired = Date.parse(session.expiresAt) <= Date.now();
+  const isExpired = Date.parse(stored.session.expiresAt) <= Date.now();
 
   if (isExpired) {
+    clearTimeout(stored.timeoutId);
     getSessionStore().delete(id);
     return null;
   }
 
-  return session;
+  return stored.session;
+}
+
+export function touchTransferSession(id: string) {
+  const stored = getSessionStore().get(id);
+
+  if (!stored) {
+    return null;
+  }
+
+  const isExpired = Date.parse(stored.session.expiresAt) <= Date.now();
+
+  if (isExpired) {
+    clearTimeout(stored.timeoutId);
+    getSessionStore().delete(id);
+    return null;
+  }
+
+  const nextSession: TransferSession = {
+    ...stored.session,
+    expiresAt: createExpiresAt(),
+  };
+
+  storeTransferSession(nextSession);
+
+  return nextSession;
 }
