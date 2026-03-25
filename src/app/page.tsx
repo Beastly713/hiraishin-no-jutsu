@@ -6,13 +6,26 @@ import { PageShell } from "@/components/page-shell";
 import { SessionSummaryCard } from "@/components/session-summary-card";
 import { TransferCard } from "@/components/transfer-card";
 import { formatBytes } from "@/lib/format";
-import { createSessionId } from "@/lib/session";
-import { TransferSession } from "@/types/session";
+import {
+  TransferFileSummary,
+  TransferSession,
+} from "@/types/session";
+
+function toTransferFileSummary(file: File): TransferFileSummary {
+  return {
+    name: file.name,
+    size: file.size,
+    type: file.type,
+  };
+}
 
 export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [session, setSession] = useState<TransferSession | null>(null);
   const [hasCopiedLink, setHasCopiedLink] = useState(false);
+  const [isCreatingLink, setIsCreatingLink] = useState(false);
+  const [createLinkError, setCreateLinkError] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const totalSize = useMemo(() => {
@@ -41,29 +54,69 @@ export default function Home() {
     setSelectedFiles(Array.from(files));
     setSession(null);
     setHasCopiedLink(false);
+    setCreateLinkError(null);
+  };
+
+  const handleChooseFiles = () => {
+    fileInputRef.current?.click();
   };
 
   const handleClearSelection = () => {
     setSelectedFiles([]);
     setSession(null);
     setHasCopiedLink(false);
+    setCreateLinkError(null);
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   };
 
-  const handleCreateLink = () => {
-    const id = createSessionId();
+  const handleCreateLink = async () => {
+    if (selectedFiles.length === 0 || isCreatingLink) {
+      return;
+    }
 
-    setSession({
-      id,
-      shareUrl: `${window.location.origin}/receive/${id}`,
-      fileCount: selectedFiles.length,
-      totalSize,
-      createdAt: new Date().toISOString(),
-    });
+    setIsCreatingLink(true);
+    setCreateLinkError(null);
     setHasCopiedLink(false);
+
+    try {
+      const response = await fetch("/api/sessions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          files: selectedFiles.map(toTransferFileSummary),
+        }),
+      });
+
+      const data: unknown = await response.json();
+
+      if(!response.ok) {
+        const errorMessage = 
+          typeof data === "object" &&
+          data != null &&
+          "error" in data &&
+          typeof data.error === "string"
+            ? data.error
+            : "Failed to create transfer link.";
+        
+        throw new Error(errorMessage);
+      }
+      setSession(data as TransferSession);
+      
+    } catch (error) {
+      setSession(null);
+      setCreateLinkError(
+        error instanceof Error
+          ? error.message
+          : "Failed to create transfer link.",
+      );
+    } finally {
+      setIsCreatingLink(false);
+    }
   };
 
   const handleCopyLink = async () => {
@@ -75,61 +128,50 @@ export default function Home() {
     setHasCopiedLink(true);
   };
 
-  const isReadyToCreateLink = selectedFiles.length > 0;
+  const isReadyToCreateLink = selectedFiles.length > 0 && !isCreatingLink;
 
   return (
-    <PageShell maxWidth="2xl">
-      <div className="w-full max-w-2xl text-center">
-        <p className="mb-4 text-sm uppercase tracking-[0.2em] text-zinc-400">
-          hiraishin-no-jutsu
-        </p>
-
-        <h1 className="text-4xl font-bold tracking-tight sm:text-6xl">
-          Send files directly between browsers
-        </h1>
-
-        <p className="mt-6 text-base leading-7 text-zinc-300 sm:text-lg">
-          A peer-to-peer file sharing app. Fast,
-          browser-based, and simple.
-        </p>
-      </div>
-
-      <section className="mt-12 w-full max-w-2xl rounded-3xl border border-zinc-800 bg-zinc-900/60 p-8 shadow-xl">
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-700 bg-zinc-950/40 px-6 py-12 text-center">
-          <h2 className="text-2xl font-semibold tracking-tight">
-            Upload files
-          </h2>
-
-          <p className="mt-3 max-w-md text-sm leading-6 text-zinc-400">
-            Choose one or more files to prepare a shareable transfer link.
+    <PageShell>
+      <section className="w-full rounded-3xl border border-zinc-800 bg-zinc-900/60 px-6 py-10 shadow-xl sm:px-10">
+        <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
+          <p className="text-sm uppercase tracking-[0.2em] text-zinc-400">
+            Sender
           </p>
 
-          <div className="mt-8 flex items-center gap-3">
-            <label
-              htmlFor="file-upload"
-              className="inline-flex cursor-pointer items-center rounded-full bg-zinc-100 px-5 py-3 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200"
+          <h1 className="mt-4 text-4xl font-bold tracking-tight sm:text-6xl">
+            Send files directly
+          </h1>
+
+          <p className="mt-4 max-w-2xl text-sm leading-6 text-zinc-400 sm:text-base">
+            Select files on this device, generate a share link, and prepare for
+            direct browser-to-browser delivery.
+          </p>
+
+          <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row">
+            <button
+              type="button"
+              onClick={handleChooseFiles}
+              className="inline-flex items-center rounded-full bg-zinc-100 px-5 py-3 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200"
             >
               Choose files
-            </label>
+            </button>
 
-            {selectedFiles.length > 0 && (
-              <button
-                type="button"
-                onClick={handleClearSelection}
-                className="inline-flex items-center rounded-full border border-zinc-700 px-5 py-3 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-900"
-              >
-                Clear selection
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleClearSelection}
+              disabled={selectedFiles.length === 0}
+              className="inline-flex items-center rounded-full border border-zinc-700 px-5 py-3 text-sm font-medium text-zinc-200 transition disabled:cursor-not-allowed disabled:border-zinc-800 disabled:text-zinc-500 enabled:hover:border-zinc-500 enabled:hover:bg-zinc-900"
+            >
+              Clear selection
+            </button>
           </div>
 
           <input
             ref={fileInputRef}
-            id="file-upload"
             type="file"
             multiple
-            className="hidden"
             onChange={handleFileChange}
+            className="hidden"
           />
 
           {selectedFiles.length === 0 ? (
@@ -144,10 +186,12 @@ export default function Home() {
 
           <TransferCard
             canCreateLink={isReadyToCreateLink}
+            isCreatingLink={isCreatingLink}
             shareUrl={session?.shareUrl ?? null}
             onCreateLink={handleCreateLink}
             onCopyLink={handleCopyLink}
             hasCopiedLink={hasCopiedLink}
+            errorMessage={createLinkError}
           />
 
           {session && (
