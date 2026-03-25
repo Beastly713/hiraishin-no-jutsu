@@ -32,6 +32,7 @@ export function ReceiverSessionView({
   }));
 
   const isValidId = useMemo(() => isValidSessionId(sessionId), [sessionId]);
+  const isClosedSession = session?.status === "closed";
 
   useEffect(() => {
     if (!isValidId) {
@@ -54,7 +55,7 @@ export function ReceiverSessionView({
       setConnection((current) => ({
         ...current,
         status:
-          current.status === "waiting_for_peer"
+          current.status === "waiting_for_peer" && !isClosedSession
             ? current.status
             : "resolving_session",
         localPeerId: receiverPeerId,
@@ -89,6 +90,19 @@ export function ReceiverSessionView({
 
         setSession(nextSession);
         setLookupError(null);
+
+        if (nextSession.status === "closed") {
+          setConnection((current) => ({
+            ...current,
+            sessionId: nextSession.id,
+            localPeerId: receiverPeerId,
+            remotePeerId: nextSession.senderPeerId,
+            status: "closed",
+            errorMessage: "This transfer session is closed.",
+          }));
+          return;
+        }
+
         setConnection((current) => ({
           ...current,
           sessionId: nextSession.id,
@@ -132,7 +146,7 @@ export function ReceiverSessionView({
         window.clearInterval(intervalId);
       }
     };
-  }, [isValidId, receiverPeerId, retryNonce, sessionId]);
+  }, [isClosedSession, isValidId, receiverPeerId, retryNonce, sessionId]);
 
   const handleRetryLookup = () => {
     setRetryNonce((current) => current + 1);
@@ -165,7 +179,7 @@ export function ReceiverSessionView({
 
         <TransferConnectionCard connection={connection} />
 
-        {session && (
+        {session && !isClosedSession && (
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
             <p className="text-xs uppercase tracking-wide text-zinc-500">
               Session status
@@ -173,6 +187,21 @@ export function ReceiverSessionView({
             <p className="mt-2 text-sm text-zinc-200">Waiting for sender...</p>
             <p className="mt-1 text-xs text-zinc-400">
               Checking session availability every 5 seconds.
+            </p>
+          </div>
+        )}
+
+        {isClosedSession && session && (
+          <div className="rounded-2xl border border-amber-900/60 bg-amber-950/40 px-4 py-4">
+            <p className="text-xs uppercase tracking-wide text-amber-400">
+              Status
+            </p>
+            <p className="mt-2 text-sm text-amber-100">
+              This transfer session is closed.
+            </p>
+            <p className="mt-1 text-xs text-amber-200/80">
+              The sender is no longer keeping this link active, so the transfer
+              cannot continue from this page.
             </p>
           </div>
         )}
@@ -210,6 +239,13 @@ export function ReceiverSessionView({
               </p>
 
               <div className="mt-3 grid gap-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-zinc-400">Status</span>
+                  <span className="font-medium text-zinc-200">
+                    {session.status === "closed" ? "Closed" : "Ready"}
+                  </span>
+                </div>
+
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-400">Sender peer</span>
                   <span className="font-medium text-zinc-200">
