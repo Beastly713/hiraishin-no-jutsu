@@ -1,4 +1,20 @@
+"use client";
+
+import { ChangeEvent, useState } from "react";
+
 export default function Home() {
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+
+    if (!files) {
+      return;
+    }
+
+    setSelectedFiles(Array.from(files));
+  };
+
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="mx-auto flex min-h-screen max-w-5xl flex-col items-center justify-center px-6 py-12">
@@ -34,11 +50,36 @@ export default function Home() {
               Choose files
             </label>
 
-            <input id="file-upload" type="file" multiple className="hidden" />
+            <input
+              id="file-upload"
+              type="file"
+              multiple
+              className="hidden"
+              onChange={handleFileChange}
+            />
 
-            <p className="mt-4 text-xs text-zinc-500">
-              File selection will be wired up in the next commit.
-            </p>
+            {selectedFiles.length === 0 ? (
+              <p className="mt-6 text-sm text-zinc-500">
+                No files selected yet.
+              </p>
+            ) : (
+              <div className="mt-8 w-full max-w-md text-left">
+                <p className="mb-3 text-sm font-medium text-zinc-300">
+                  Selected files
+                </p>
+
+                <ul className="space-y-2">
+                  {selectedFiles.map((file) => (
+                    <li
+                      key={`${file.name}-${file.size}`}
+                      className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-200"
+                    >
+                      {file.name}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </section>
       </div>
