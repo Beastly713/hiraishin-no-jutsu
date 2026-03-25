@@ -16,17 +16,24 @@ export function SessionSummaryCard({
       </p>
 
       <div className="mt-3 grid gap-3 text-sm">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <span className="text-zinc-400">Session ID</span>
           <span className="font-medium text-zinc-200">{session.id}</span>
         </div>
 
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-zinc-400">Sender peer</span>
+          <span className="font-medium text-zinc-200">
+            {session.senderPeerId}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
           <span className="text-zinc-400">Files</span>
           <span className="font-medium text-zinc-200">{session.fileCount}</span>
         </div>
 
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <span className="text-zinc-400">Total size</span>
           <span className="font-medium text-zinc-200">
             {formatBytes(session.totalSize)}

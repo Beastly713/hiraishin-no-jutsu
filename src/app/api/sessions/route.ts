@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createTransferSession } from "@/lib/session-store";
+import { isValidPeerId } from "@/lib/peer";
 import { TransferFileSummary } from "@/types/session";
 
 type CreateSessionRequestBody = {
+  senderPeerId?: unknown;
   files?: unknown;
 };
 
@@ -35,6 +37,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (typeof body.senderPeerId !== "string" || !isValidPeerId(body.senderPeerId)) {
+    return NextResponse.json(
+      { error: "A valid sender peer id is required." },
+      { status: 400 },
+    );
+  }
+
   if (!Array.isArray(body.files) || body.files.length === 0) {
     return NextResponse.json(
       { error: "At least one file is required to create a session." },
@@ -49,11 +58,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const origin = request.nextUrl.origin;
-
   const session = createTransferSession({
+    senderPeerId: body.senderPeerId,
     files: body.files,
-    origin,
+    origin: request.nextUrl.origin,
   });
 
   return NextResponse.json(session, { status: 201 });

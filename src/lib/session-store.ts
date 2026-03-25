@@ -1,8 +1,8 @@
-import { createSessionId } from "@/lib/session";
 import {
   CreateTransferSessionInput,
   TransferSession,
 } from "@/types/session";
+import { createSessionId } from "@/lib/session";
 
 const SESSION_TTL_MS = 1000 * 60 * 60;
 
@@ -26,6 +26,7 @@ function calculateTotalSize(files: CreateTransferSessionInput["files"]) {
 }
 
 export function createTransferSession({
+  senderPeerId,
   files,
   origin,
 }: CreateTransferSessionInput): TransferSession {
@@ -35,6 +36,7 @@ export function createTransferSession({
 
   const session: TransferSession = {
     id,
+    senderPeerId,
     shareUrl: `${origin}/receive/${id}`,
     files,
     fileCount: files.length,

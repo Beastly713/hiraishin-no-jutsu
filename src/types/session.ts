@@ -8,6 +8,7 @@ export type TransferSessionStatus = "ready";
 
 export type TransferSession = {
   id: string;
+  senderPeerId: string;
   shareUrl: string;
   files: TransferFileSummary[];
   fileCount: number;
@@ -18,6 +19,7 @@ export type TransferSession = {
 };
 
 export type CreateTransferSessionInput = {
+  senderPeerId: string;
   files: TransferFileSummary[];
   origin: string;
 };

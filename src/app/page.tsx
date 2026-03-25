@@ -6,10 +6,8 @@ import { PageShell } from "@/components/page-shell";
 import { SessionSummaryCard } from "@/components/session-summary-card";
 import { TransferCard } from "@/components/transfer-card";
 import { formatBytes } from "@/lib/format";
-import {
-  TransferFileSummary,
-  TransferSession,
-} from "@/types/session";
+import { createPeerId } from "@/lib/peer";
+import { TransferFileSummary, TransferSession } from "@/types/session";
 
 function toTransferFileSummary(file: File): TransferFileSummary {
   return {
@@ -25,6 +23,7 @@ export default function Home() {
   const [hasCopiedLink, setHasCopiedLink] = useState(false);
   const [isCreatingLink, setIsCreatingLink] = useState(false);
   const [createLinkError, setCreateLinkError] = useState<string | null>(null);
+  const [senderPeerId] = useState(() => createPeerId());
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -88,25 +87,26 @@ export default function Home() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          senderPeerId,
           files: selectedFiles.map(toTransferFileSummary),
         }),
       });
 
       const data: unknown = await response.json();
 
-      if(!response.ok) {
-        const errorMessage = 
+      if (!response.ok) {
+        const errorMessage =
           typeof data === "object" &&
-          data != null &&
+          data !== null &&
           "error" in data &&
           typeof data.error === "string"
             ? data.error
             : "Failed to create transfer link.";
-        
+
         throw new Error(errorMessage);
       }
+
       setSession(data as TransferSession);
-      
     } catch (error) {
       setSession(null);
       setCreateLinkError(
@@ -195,10 +195,7 @@ export default function Home() {
           />
 
           {session && (
-            <SessionSummaryCard
-              session={session}
-              formatBytes={formatBytes}
-            />
+            <SessionSummaryCard session={session} formatBytes={formatBytes} />
           )}
         </div>
       </section>
