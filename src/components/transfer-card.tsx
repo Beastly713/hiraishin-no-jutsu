@@ -2,12 +2,16 @@ type TransferCardProps = {
   canCreateLink: boolean;
   shareUrl: string | null;
   onCreateLink: () => void;
+  onCopyLink: () => void;
+  hasCopiedLink: boolean;
 };
 
 export function TransferCard({
   canCreateLink,
   shareUrl,
   onCreateLink,
+  onCopyLink,
+  hasCopiedLink,
 }: TransferCardProps) {
   return (
     <div className="mt-8 w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-4 text-left">
@@ -36,7 +40,22 @@ export function TransferCard({
           <p className="text-xs uppercase tracking-wide text-zinc-500">
             Share URL
           </p>
+
           <p className="mt-2 break-all text-sm text-zinc-200">{shareUrl}</p>
+
+          <div className="mt-4 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={onCopyLink}
+              className="inline-flex items-center rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-900"
+            >
+              Copy link
+            </button>
+
+            {hasCopiedLink && (
+              <span className="text-xs font-medium text-zinc-400">Copied!</span>
+            )}
+          </div>
         </div>
       )}
     </div>

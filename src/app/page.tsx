@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useMemo, useRef, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { FileList } from "@/components/file-list";
 import { PageShell } from "@/components/page-shell";
 import { SessionSummaryCard } from "@/components/session-summary-card";
@@ -12,11 +12,24 @@ import { TransferSession } from "@/types/session";
 export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [session, setSession] = useState<TransferSession | null>(null);
+  const [hasCopiedLink, setHasCopiedLink] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const totalSize = useMemo(() => {
     return selectedFiles.reduce((sum, file) => sum + file.size, 0);
   }, [selectedFiles]);
+
+  useEffect(() => {
+    if (!hasCopiedLink) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setHasCopiedLink(false);
+    }, 2000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [hasCopiedLink]);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -27,11 +40,13 @@ export default function Home() {
 
     setSelectedFiles(Array.from(files));
     setSession(null);
+    setHasCopiedLink(false);
   };
 
   const handleClearSelection = () => {
     setSelectedFiles([]);
     setSession(null);
+    setHasCopiedLink(false);
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -48,6 +63,16 @@ export default function Home() {
       totalSize,
       createdAt: new Date().toISOString(),
     });
+    setHasCopiedLink(false);
+  };
+
+  const handleCopyLink = async () => {
+    if (!session?.shareUrl) {
+      return;
+    }
+
+    await navigator.clipboard.writeText(session.shareUrl);
+    setHasCopiedLink(true);
   };
 
   const isReadyToCreateLink = selectedFiles.length > 0;
@@ -121,6 +146,8 @@ export default function Home() {
             canCreateLink={isReadyToCreateLink}
             shareUrl={session?.shareUrl ?? null}
             onCreateLink={handleCreateLink}
+            onCopyLink={handleCopyLink}
+            hasCopiedLink={hasCopiedLink}
           />
 
           {session && (
