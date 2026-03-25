@@ -1,6 +1,8 @@
 "use client";
 
 import { ChangeEvent, useMemo, useRef, useState } from "react";
+import { FileList } from "@/components/file-list";
+import { TransferCard } from "@/components/transfer-card";
 
 function formatBytes(bytes: number) {
   if (bytes < 1024) {
@@ -108,53 +110,14 @@ export default function Home() {
                 No files selected yet.
               </p>
             ) : (
-              <div className="mt-8 w-full max-w-md text-left">
-                <div className="mb-4 flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm">
-                  <span className="text-zinc-300">
-                    {selectedFiles.length} file
-                    {selectedFiles.length > 1 ? "s" : ""} selected
-                  </span>
-                  <span className="text-zinc-400">{formatBytes(totalSize)}</span>
-                </div>
-
-                <ul className="space-y-2">
-                  {selectedFiles.map((file) => (
-                    <li
-                      key={`${file.name}-${file.size}`}
-                      className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm"
-                    >
-                      <span className="truncate pr-4 text-zinc-200">
-                        {file.name}
-                      </span>
-                      <span className="shrink-0 text-zinc-400">
-                        {formatBytes(file.size)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <FileList
+                files={selectedFiles}
+                totalSizeLabel={formatBytes(totalSize)}
+                formatBytes={formatBytes}
+              />
             )}
 
-            <div className="mt-8 w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-4 text-left">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm font-medium text-zinc-200">
-                    Transfer link
-                  </p>
-                  <p className="mt-1 text-xs text-zinc-400">
-                    Link creation will be wired up in upcoming commits.
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  disabled={!isReadyToCreateLink}
-                  className="inline-flex items-center rounded-full px-5 py-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500 enabled:bg-zinc-100 enabled:text-zinc-950 enabled:hover:bg-zinc-200"
-                >
-                  Create link
-                </button>
-              </div>
-            </div>
+            <TransferCard canCreateLink={isReadyToCreateLink} />
           </div>
         </section>
       </div>
