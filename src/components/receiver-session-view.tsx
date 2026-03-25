@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { SessionFileList } from "@/components/session-file-list";
 import { TransferConnectionCard } from "@/components/transfer-connection-card";
 import { formatBytes } from "@/lib/format";
@@ -203,6 +204,24 @@ export function ReceiverSessionView({
               The sender is no longer keeping this link active, so the transfer
               cannot continue from this page.
             </p>
+
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={handleRetryLookup}
+                disabled={isRetrying}
+                className="inline-flex items-center rounded-full border border-amber-800 px-4 py-2 text-sm font-medium text-amber-100 transition disabled:cursor-not-allowed disabled:opacity-60 enabled:hover:bg-amber-900/30"
+              >
+                {isRetrying ? "Checking..." : "Check again"}
+              </button>
+
+              <Link
+                href="/"
+                className="inline-flex items-center rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-950"
+              >
+                Back to sender page
+              </Link>
+            </div>
           </div>
         )}
 
