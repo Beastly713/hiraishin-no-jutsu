@@ -96,9 +96,19 @@ export default function Home() {
           return;
         }
 
-        setSession(data as TransferSession);
+        const nextSession = data as TransferSession;
+
+        setSession(nextSession);
         setKeepaliveStatus("active");
         setLastKeepaliveAt(new Date().toISOString());
+        setConnection((current) => ({
+          ...current,
+          sessionId: nextSession.id,
+          localPeerId: senderPeerId,
+          remotePeerId: nextSession.receiverPeerId,
+          status: nextSession.receiverPeerId ? "ready" : "waiting_for_peer",
+          errorMessage: null,
+        }));
       } catch {
         if (isCancelled) {
           return;
@@ -130,7 +140,7 @@ export default function Home() {
       isCancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [session?.id, session?.status]);
+  }, [session?.id, session?.status, senderPeerId]);
 
   const resetSenderState = () => {
     setSession(null);
@@ -223,8 +233,8 @@ export default function Home() {
         ...current,
         sessionId: nextSession.id,
         localPeerId: senderPeerId,
-        remotePeerId: null,
-        status: "waiting_for_peer",
+        remotePeerId: nextSession.receiverPeerId,
+        status: nextSession.receiverPeerId ? "ready" : "waiting_for_peer",
         errorMessage: null,
       }));
     } catch (error) {

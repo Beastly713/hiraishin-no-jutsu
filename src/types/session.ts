@@ -11,6 +11,8 @@ export type SenderSessionKeepaliveStatus = "idle" | "active" | "error";
 export type TransferSession = {
   id: string;
   senderPeerId: string;
+  receiverPeerId: string | null;
+  receiverJoinedAt: string | null;
   shareUrl: string;
   files: TransferFileSummary[];
   fileCount: number;

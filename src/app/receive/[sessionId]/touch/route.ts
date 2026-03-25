@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isValidPeerId } from "@/lib/peer";
 import { isValidSessionId } from "@/lib/session";
-import { closeTransferSession } from "@/lib/session-store";
+import { joinTransferSession } from "@/lib/session-store";
 
 type RouteContext = {
   params: Promise<{
@@ -8,8 +9,12 @@ type RouteContext = {
   }>;
 };
 
+type JoinSessionRequestBody = {
+  receiverPeerId?: unknown;
+};
+
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: RouteContext,
 ) {
   const { sessionId } = await params;
@@ -21,7 +26,28 @@ export async function POST(
     );
   }
 
-  const session = closeTransferSession(sessionId);
+  let body: JoinSessionRequestBody;
+
+  try {
+    body = (await request.json()) as JoinSessionRequestBody;
+  } catch {
+    return NextResponse.json(
+      { error: "Request body must be valid JSON." },
+      { status: 400 },
+    );
+  }
+
+  if (
+    typeof body.receiverPeerId !== "string" ||
+    !isValidPeerId(body.receiverPeerId)
+  ) {
+    return NextResponse.json(
+      { error: "A valid receiver peer id is required." },
+      { status: 400 },
+    );
+  }
+
+  const session = joinTransferSession(sessionId, body.receiverPeerId);
 
   if (!session) {
     return NextResponse.json(

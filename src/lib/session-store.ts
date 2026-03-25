@@ -16,3 +16,7 @@ export function touchTransferSession(id: string) {
 export function closeTransferSession(id: string) {
   return getSessionRepository().closeSession(id);
 }
+
+export function joinTransferSession(id: string, receiverPeerId: string) {
+  return getSessionRepository().joinSession(id, receiverPeerId);
+}

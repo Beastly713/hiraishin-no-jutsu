@@ -9,6 +9,7 @@ export interface SessionRepository {
   getSession(id: string): TransferSession | null;
   touchSession(id: string): TransferSession | null;
   closeSession(id: string): TransferSession | null;
+  joinSession(id: string, receiverPeerId: string): TransferSession | null;
 }
 
 declare global {

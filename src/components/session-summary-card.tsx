@@ -84,6 +84,22 @@ export function SessionSummaryCard({
         </div>
 
         <div className="flex items-center justify-between gap-4">
+          <span className="text-zinc-400">Receiver peer</span>
+          <span className="font-medium text-zinc-200">
+            {session.receiverPeerId ?? "Waiting..."}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-zinc-400">Receiver joined</span>
+          <span className="font-medium text-zinc-200">
+            {session.receiverJoinedAt
+              ? new Date(session.receiverJoinedAt).toLocaleTimeString()
+              : "Not yet"}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
           <span className="text-zinc-400">Files</span>
           <span className="font-medium text-zinc-200">{session.fileCount}</span>
         </div>

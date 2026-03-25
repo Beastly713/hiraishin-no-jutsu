@@ -66,6 +66,8 @@ export class InMemorySessionRepository implements SessionRepository {
     const session: TransferSession = {
       id,
       senderPeerId,
+      receiverPeerId: null,
+      receiverJoinedAt: null,
       shareUrl: `${origin}/receive/${id}`,
       files,
       fileCount: files.length,
@@ -139,6 +141,32 @@ export class InMemorySessionRepository implements SessionRepository {
 
     clearTimeout(stored.timeoutId);
     getSessionStore().delete(id);
+
+    return nextSession;
+  }
+
+  joinSession(id: string, receiverPeerId: string) {
+    const stored = getSessionStore().get(id);
+
+    if (!stored) {
+      return null;
+    }
+
+    const isExpired = Date.parse(stored.session.expiresAt) <= Date.now();
+
+    if (isExpired || stored.session.status === "closed") {
+      clearTimeout(stored.timeoutId);
+      getSessionStore().delete(id);
+      return null;
+    }
+
+    const nextSession: TransferSession = {
+      ...stored.session,
+      receiverPeerId,
+      receiverJoinedAt: new Date().toISOString(),
+    };
+
+    storeTransferSession(nextSession);
 
     return nextSession;
   }

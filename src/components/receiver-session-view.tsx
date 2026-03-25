@@ -56,7 +56,7 @@ export function ReceiverSessionView({
       setConnection((current) => ({
         ...current,
         status:
-          current.status === "waiting_for_peer" && !isClosedSession
+          current.status === "ready" && !isClosedSession
             ? current.status
             : "resolving_session",
         localPeerId: receiverPeerId,
@@ -104,12 +104,54 @@ export function ReceiverSessionView({
           return;
         }
 
+        if (nextSession.receiverPeerId !== receiverPeerId) {
+          const joinResponse = await fetch(`/api/sessions/${sessionId}/join`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              receiverPeerId,
+            }),
+          });
+
+          const joinData: unknown = await joinResponse.json();
+
+          if (!joinResponse.ok) {
+            const errorMessage =
+              typeof joinData === "object" &&
+              joinData !== null &&
+              "error" in joinData &&
+              typeof joinData.error === "string"
+                ? joinData.error
+                : "Failed to join transfer session.";
+
+            throw new Error(errorMessage);
+          }
+
+          if (isCancelled) {
+            return;
+          }
+
+          const joinedSession = joinData as TransferSession;
+          setSession(joinedSession);
+          setConnection((current) => ({
+            ...current,
+            sessionId: joinedSession.id,
+            localPeerId: receiverPeerId,
+            remotePeerId: joinedSession.senderPeerId,
+            status: "ready",
+            errorMessage: null,
+          }));
+          return;
+        }
+
         setConnection((current) => ({
           ...current,
           sessionId: nextSession.id,
           localPeerId: receiverPeerId,
           remotePeerId: nextSession.senderPeerId,
-          status: "waiting_for_peer",
+          status: "ready",
           errorMessage: null,
         }));
       } catch (error) {
@@ -185,9 +227,13 @@ export function ReceiverSessionView({
             <p className="text-xs uppercase tracking-wide text-zinc-500">
               Session status
             </p>
-            <p className="mt-2 text-sm text-zinc-200">Waiting for sender...</p>
+            <p className="mt-2 text-sm text-zinc-200">
+              {session.receiverPeerId
+                ? "Receiver joined. Session is ready."
+                : "Joining receiver to session..."}
+            </p>
             <p className="mt-1 text-xs text-zinc-400">
-              Checking session availability every 5 seconds.
+              Session availability is checked every 5 seconds.
             </p>
           </div>
         )}
@@ -269,6 +315,22 @@ export function ReceiverSessionView({
                   <span className="text-zinc-400">Sender peer</span>
                   <span className="font-medium text-zinc-200">
                     {session.senderPeerId}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-zinc-400">Receiver peer</span>
+                  <span className="font-medium text-zinc-200">
+                    {session.receiverPeerId ?? "Waiting..."}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-zinc-400">Receiver joined</span>
+                  <span className="font-medium text-zinc-200">
+                    {session.receiverJoinedAt
+                      ? new Date(session.receiverJoinedAt).toLocaleTimeString()
+                      : "Not yet"}
                   </span>
                 </div>
 
