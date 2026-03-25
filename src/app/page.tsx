@@ -5,9 +5,14 @@ import { FileList } from "@/components/file-list";
 import { PageShell } from "@/components/page-shell";
 import { SessionSummaryCard } from "@/components/session-summary-card";
 import { TransferCard } from "@/components/transfer-card";
+import { TransferConnectionCard } from "@/components/transfer-connection-card";
 import { formatBytes } from "@/lib/format";
 import { createPeerId } from "@/lib/peer";
 import { TransferFileSummary, TransferSession } from "@/types/session";
+import {
+  createTransferConnectionState,
+} from "@/lib/transfer-connection";
+import { TransferConnectionState } from "@/types/transfer-connection";
 
 function toTransferFileSummary(file: File): TransferFileSummary {
   return {
@@ -24,6 +29,14 @@ export default function Home() {
   const [isCreatingLink, setIsCreatingLink] = useState(false);
   const [createLinkError, setCreateLinkError] = useState<string | null>(null);
   const [senderPeerId] = useState(() => createPeerId());
+  const [connection, setConnection] = useState<TransferConnectionState>(() => {
+    const state = createTransferConnectionState({ role: "sender" });
+
+    return {
+      ...state,
+      localPeerId: senderPeerId,
+    };
+  });
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -54,6 +67,13 @@ export default function Home() {
     setSession(null);
     setHasCopiedLink(false);
     setCreateLinkError(null);
+    setConnection((current) => ({
+      ...current,
+      sessionId: null,
+      remotePeerId: null,
+      status: "idle",
+      errorMessage: null,
+    }));
   };
 
   const handleChooseFiles = () => {
@@ -65,6 +85,13 @@ export default function Home() {
     setSession(null);
     setHasCopiedLink(false);
     setCreateLinkError(null);
+    setConnection((current) => ({
+      ...current,
+      sessionId: null,
+      remotePeerId: null,
+      status: "idle",
+      errorMessage: null,
+    }));
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -79,6 +106,11 @@ export default function Home() {
     setIsCreatingLink(true);
     setCreateLinkError(null);
     setHasCopiedLink(false);
+    setConnection((current) => ({
+      ...current,
+      status: "connecting",
+      errorMessage: null,
+    }));
 
     try {
       const response = await fetch("/api/sessions", {
@@ -106,14 +138,32 @@ export default function Home() {
         throw new Error(errorMessage);
       }
 
-      setSession(data as TransferSession);
+      const nextSession = data as TransferSession;
+
+      setSession(nextSession);
+      setConnection((current) => ({
+        ...current,
+        sessionId: nextSession.id,
+        localPeerId: senderPeerId,
+        remotePeerId: null,
+        status: "waiting_for_peer",
+        errorMessage: null,
+      }));
     } catch (error) {
-      setSession(null);
-      setCreateLinkError(
+      const errorMessage =
         error instanceof Error
           ? error.message
-          : "Failed to create transfer link.",
-      );
+          : "Failed to create transfer link.";
+
+      setSession(null);
+      setCreateLinkError(errorMessage);
+      setConnection((current) => ({
+        ...current,
+        sessionId: null,
+        remotePeerId: null,
+        status: "failed",
+        errorMessage,
+      }));
     } finally {
       setIsCreatingLink(false);
     }
@@ -193,6 +243,8 @@ export default function Home() {
             hasCopiedLink={hasCopiedLink}
             errorMessage={createLinkError}
           />
+
+          <TransferConnectionCard connection={connection} />
 
           {session && (
             <SessionSummaryCard session={session} formatBytes={formatBytes} />
