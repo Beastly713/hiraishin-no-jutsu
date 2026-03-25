@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useMemo, useState } from "react";
+import { ChangeEvent, useMemo, useRef, useState } from "react";
 
 function formatBytes(bytes: number) {
   if (bytes < 1024) {
@@ -21,6 +21,7 @@ function formatBytes(bytes: number) {
 
 export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -30,6 +31,14 @@ export default function Home() {
     }
 
     setSelectedFiles(Array.from(files));
+  };
+
+  const handleClearSelection = () => {
+    setSelectedFiles([]);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   const totalSize = useMemo(() => {
@@ -49,7 +58,7 @@ export default function Home() {
           </h1>
 
           <p className="mt-6 text-base leading-7 text-zinc-300 sm:text-lg">
-            A peer-to-peer file sharing app. Fast,
+            A peer-to-peer file sharing app . Fast,
             browser-based, and simple.
           </p>
         </div>
@@ -64,14 +73,27 @@ export default function Home() {
               Choose one or more files to prepare a shareable transfer link.
             </p>
 
-            <label
-              htmlFor="file-upload"
-              className="mt-8 inline-flex cursor-pointer items-center rounded-full bg-zinc-100 px-5 py-3 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200"
-            >
-              Choose files
-            </label>
+            <div className="mt-8 flex items-center gap-3">
+              <label
+                htmlFor="file-upload"
+                className="inline-flex cursor-pointer items-center rounded-full bg-zinc-100 px-5 py-3 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200"
+              >
+                Choose files
+              </label>
+
+              {selectedFiles.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearSelection}
+                  className="inline-flex items-center rounded-full border border-zinc-700 px-5 py-3 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-900"
+                >
+                  Clear selection
+                </button>
+              )}
+            </div>
 
             <input
+              ref={fileInputRef}
               id="file-upload"
               type="file"
               multiple
