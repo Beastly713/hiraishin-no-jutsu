@@ -33,20 +33,24 @@ export default function Home() {
   const [isCreatingLink, setIsCreatingLink] = useState(false);
   const [isClosingSession, setIsClosingSession] = useState(false);
   const [createLinkError, setCreateLinkError] = useState<string | null>(null);
-  const [senderPeerId] = useState(() => createPeerId());
+  const [senderPeerId, setSenderPeerId] = useState<string | null>(null);
   const [keepaliveStatus, setKeepaliveStatus] =
     useState<SenderSessionKeepaliveStatus>("idle");
   const [lastKeepaliveAt, setLastKeepaliveAt] = useState<string | null>(null);
-  const [connection, setConnection] = useState<TransferConnectionState>(() => {
-    const state = createTransferConnectionState({ role: "sender" });
-
-    return {
-      ...state,
-      localPeerId: senderPeerId,
-    };
-  });
+  const [connection, setConnection] = useState<TransferConnectionState>(() =>
+    createTransferConnectionState({ role: "sender" }),
+  );
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const peerId = createPeerId();
+    setSenderPeerId(peerId);
+    setConnection((current) => ({
+      ...current,
+      localPeerId: peerId,
+    }));
+  }, []);
 
   const totalSize = useMemo(() => {
     return selectedFiles.reduce((sum, file) => sum + file.size, 0);
@@ -65,7 +69,7 @@ export default function Home() {
   }, [hasCopiedLink]);
 
   useEffect(() => {
-    if (!session?.id || session.status === "closed") {
+    if (!session?.id || session.status === "closed" || !senderPeerId) {
       return;
     }
 
@@ -183,7 +187,7 @@ export default function Home() {
   };
 
   const handleCreateLink = async () => {
-    if (selectedFiles.length === 0 || isCreatingLink) {
+    if (selectedFiles.length === 0 || isCreatingLink || !senderPeerId) {
       return;
     }
 
@@ -282,7 +286,7 @@ export default function Home() {
             ? data.error
             : "Failed to close transfer session.";
 
-        throw new Error(errorMessage);
+          throw new Error(errorMessage);
       }
 
       const nextSession = data as TransferSession;
@@ -325,6 +329,7 @@ export default function Home() {
   const isReadyToCreateLink =
     selectedFiles.length > 0 &&
     !isCreatingLink &&
+    !!senderPeerId &&
     session?.status !== "closed";
 
   return (
