@@ -31,6 +31,7 @@ export default function Home() {
   const [session, setSession] = useState<TransferSession | null>(null);
   const [hasCopiedLink, setHasCopiedLink] = useState(false);
   const [isCreatingLink, setIsCreatingLink] = useState(false);
+  const [isClosingSession, setIsClosingSession] = useState(false);
   const [createLinkError, setCreateLinkError] = useState<string | null>(null);
   const [senderPeerId] = useState(() => createPeerId());
   const [keepaliveStatus, setKeepaliveStatus] =
@@ -64,7 +65,7 @@ export default function Home() {
   }, [hasCopiedLink]);
 
   useEffect(() => {
-    if (!session?.id) {
+    if (!session?.id || session.status === "closed") {
       return;
     }
 
@@ -103,11 +104,20 @@ export default function Home() {
           return;
         }
 
+        setSession((current) =>
+          current
+            ? {
+                ...current,
+                status: "closed",
+                expiresAt: new Date().toISOString(),
+              }
+            : current,
+        );
         setKeepaliveStatus("error");
         setConnection((current) => ({
           ...current,
-          status: "failed",
-          errorMessage: "Failed to keep transfer session active.",
+          status: "closed",
+          errorMessage: "Transfer session closed after keepalive failure.",
         }));
       }
     }
@@ -120,12 +130,13 @@ export default function Home() {
       isCancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [session?.id]);
+  }, [session?.id, session?.status]);
 
   const resetSenderState = () => {
     setSession(null);
     setHasCopiedLink(false);
     setCreateLinkError(null);
+    setIsClosingSession(false);
     setKeepaliveStatus("idle");
     setLastKeepaliveAt(null);
     setConnection((current) => ({
@@ -238,8 +249,62 @@ export default function Home() {
     }
   };
 
+  const handleCloseSession = async () => {
+    if (!session?.id || session.status === "closed" || isClosingSession) {
+      return;
+    }
+
+    setIsClosingSession(true);
+
+    try {
+      const response = await fetch(`/api/sessions/${session.id}/close`, {
+        method: "POST",
+      });
+
+      const data: unknown = await response.json();
+
+      if (!response.ok) {
+        const errorMessage =
+          typeof data === "object" &&
+          data !== null &&
+          "error" in data &&
+          typeof data.error === "string"
+            ? data.error
+            : "Failed to close transfer session.";
+
+        throw new Error(errorMessage);
+      }
+
+      const nextSession = data as TransferSession;
+
+      setSession(nextSession);
+      setKeepaliveStatus("idle");
+      setConnection((current) => ({
+        ...current,
+        sessionId: nextSession.id,
+        localPeerId: senderPeerId,
+        remotePeerId: null,
+        status: "closed",
+        errorMessage: null,
+      }));
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to close transfer session.";
+
+      setConnection((current) => ({
+        ...current,
+        status: "failed",
+        errorMessage,
+      }));
+    } finally {
+      setIsClosingSession(false);
+    }
+  };
+
   const handleCopyLink = async () => {
-    if (!session?.shareUrl) {
+    if (!session?.shareUrl || session.status === "closed") {
       return;
     }
 
@@ -247,7 +312,10 @@ export default function Home() {
     setHasCopiedLink(true);
   };
 
-  const isReadyToCreateLink = selectedFiles.length > 0 && !isCreatingLink;
+  const isReadyToCreateLink =
+    selectedFiles.length > 0 &&
+    !isCreatingLink &&
+    session?.status !== "closed";
 
   return (
     <PageShell>
@@ -306,7 +374,9 @@ export default function Home() {
           <TransferCard
             canCreateLink={isReadyToCreateLink}
             isCreatingLink={isCreatingLink}
-            shareUrl={session?.shareUrl ?? null}
+            shareUrl={
+              session?.status === "closed" ? null : session?.shareUrl ?? null
+            }
             onCreateLink={handleCreateLink}
             onCopyLink={handleCopyLink}
             hasCopiedLink={hasCopiedLink}
@@ -321,6 +391,8 @@ export default function Home() {
               formatBytes={formatBytes}
               keepaliveStatus={keepaliveStatus}
               lastKeepaliveAt={lastKeepaliveAt}
+              isClosingSession={isClosingSession}
+              onCloseSession={handleCloseSession}
             />
           )}
         </div>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isValidSessionId } from "@/lib/session";
-import { touchTransferSession } from "@/lib/session-store";
+import { closeTransferSession } from "@/lib/session-store";
 
 type RouteContext = {
   params: Promise<{
@@ -21,7 +21,7 @@ export async function POST(
     );
   }
 
-  const session = touchTransferSession(sessionId);
+  const session = closeTransferSession(sessionId);
 
   if (!session) {
     return NextResponse.json(
