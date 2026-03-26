@@ -22,16 +22,20 @@ type UseSenderTransferStreamOptions = {
 type SenderTransferStreamSnapshot = {
   status: "idle" | "streaming" | "failed";
   fileName: string | null;
+  fileSize: number;
   offset: number;
   bytesSent: number;
+  bytesAcknowledged: number;
   errorMessage: string | null;
 };
 
 const INITIAL_STATE: SenderTransferStreamSnapshot = {
   status: "idle",
   fileName: null,
+  fileSize: 0,
   offset: 0,
   bytesSent: 0,
+  bytesAcknowledged: 0,
   errorMessage: null,
 };
 
@@ -83,13 +87,11 @@ export function useSenderTransferStream({
         // Best effort only.
       }
 
-      setSnapshot({
+      setSnapshot((current) => ({
+        ...current,
         status: "failed",
-        fileName: snapshotRef.current.fileName,
-        offset: snapshotRef.current.offset,
-        bytesSent: snapshotRef.current.bytesSent,
         errorMessage: message,
-      });
+      }));
 
       connection.close();
     };
@@ -124,13 +126,15 @@ export function useSenderTransferStream({
 
             const bytesSent = end;
 
-            setSnapshot({
-              status: final ? "idle" : "streaming",
+            setSnapshot((current) => ({
+              ...current,
+              status: "streaming",
               fileName: file.name,
+              fileSize: file.size,
               offset: bytesSent,
               bytesSent,
               errorMessage: null,
-            });
+            }));
 
             offset = end;
 
@@ -150,12 +154,47 @@ export function useSenderTransferStream({
       setSnapshot({
         status: "streaming",
         fileName: file.name,
+        fileSize: file.size,
         offset: startOffset,
         bytesSent: startOffset,
+        bytesAcknowledged: startOffset,
         errorMessage: null,
       });
 
       sendNextChunk();
+    };
+
+    const handleChunkAck = (fileName: string, bytesReceived: number) => {
+      const current = snapshotRef.current;
+
+      if (!current.fileName || current.fileName !== fileName) {
+        failTransfer(`Received chunk acknowledgement for unexpected file "${fileName}".`);
+        return;
+      }
+
+      if (bytesReceived < current.bytesAcknowledged) {
+        failTransfer(
+          `Received out-of-order acknowledgement for "${fileName}".`,
+        );
+        return;
+      }
+
+      if (bytesReceived > current.bytesSent) {
+        failTransfer(
+          `Received acknowledgement beyond sent bytes for "${fileName}".`,
+        );
+        return;
+      }
+
+      setSnapshot((previous) => ({
+        ...previous,
+        bytesAcknowledged: bytesReceived,
+        status:
+          bytesReceived === previous.fileSize &&
+          previous.bytesSent === previous.fileSize
+            ? "idle"
+            : previous.status,
+      }));
     };
 
     const handleData = (value: unknown) => {
@@ -172,7 +211,12 @@ export function useSenderTransferStream({
         return;
       }
 
-      if (isTransferChunkAckMessage(value) || isTransferDoneMessage(value)) {
+      if (isTransferDoneMessage(value)) {
+        return;
+      }
+
+      if (isTransferChunkAckMessage(value)) {
+        handleChunkAck(value.payload.fileName, value.payload.bytesReceived);
         return;
       }
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DataConnection } from "peerjs";
 import {
+  createChunkAckMessage,
   createErrorMessage,
   getUnexpectedExecutionMessageError,
   isTransferChunkAckMessage,
@@ -28,6 +29,7 @@ type ReceiverTransferDownloadSnapshot = {
   totalBytesReceived: number;
   totalBytesTotal: number;
   downloadUrl: string | null;
+  lastAcknowledgedOffset: number;
   errorMessage: string | null;
 };
 
@@ -41,6 +43,7 @@ const INITIAL_STATE: ReceiverTransferDownloadSnapshot = {
   totalBytesReceived: 0,
   totalBytesTotal: 0,
   downloadUrl: null,
+  lastAcknowledgedOffset: 0,
   errorMessage: null,
 };
 
@@ -61,9 +64,7 @@ export function useReceiverTransferDownload({
   const currentDownloadUrlRef = useRef<string | null>(null);
 
   const totalBytesTotal = useMemo(() => {
-    return (
-      infoPayload?.files.reduce((sum, file) => sum + file.size, 0) ?? 0
-    );
+    return infoPayload?.files.reduce((sum, file) => sum + file.size, 0) ?? 0;
   }, [infoPayload]);
 
   useEffect(() => {
@@ -94,6 +95,24 @@ export function useReceiverTransferDownload({
       }));
 
       connection.close();
+    };
+
+    const acknowledgeChunk = (fileName: string, bytesReceived: number) => {
+      try {
+        connection.send(
+          createChunkAckMessage({
+            fileName,
+            offset: bytesReceived,
+            bytesReceived,
+          }),
+        );
+      } catch (error) {
+        failTransfer(
+          error instanceof Error
+            ? error.message
+            : "Failed to acknowledge received chunk.",
+        );
+      }
     };
 
     const handleData = (value: unknown) => {
@@ -157,14 +176,14 @@ export function useReceiverTransferDownload({
       const nextFileBytesReceived = currentFileBytesRef.current + chunkBytes.byteLength;
 
       if (nextFileBytesReceived > fileInfo.size) {
-        failTransfer(
-          `Received too many bytes for "${value.payload.fileName}".`,
-        );
+        failTransfer(`Received too many bytes for "${value.payload.fileName}".`);
         return;
       }
 
       chunksRef.current = [...chunksRef.current, chunkBytes];
       currentFileBytesRef.current = nextFileBytesReceived;
+
+      acknowledgeChunk(value.payload.fileName, nextFileBytesReceived);
 
       const nextSnapshotBase: ReceiverTransferDownloadSnapshot = {
         status: value.payload.final ? "file_ready" : "downloading",
@@ -176,14 +195,13 @@ export function useReceiverTransferDownload({
         totalBytesReceived: nextFileBytesReceived,
         totalBytesTotal,
         downloadUrl: null,
+        lastAcknowledgedOffset: nextFileBytesReceived,
         errorMessage: null,
       };
 
       if (value.payload.final) {
         if (nextFileBytesReceived !== fileInfo.size) {
-          failTransfer(
-            `Final chunk size mismatch for "${value.payload.fileName}".`,
-          );
+          failTransfer(`Final chunk size mismatch for "${value.payload.fileName}".`);
           return;
         }
 
@@ -211,10 +229,7 @@ export function useReceiverTransferDownload({
     };
 
     const handleClose = () => {
-      if (currentDownloadUrlRef.current) {
-        // Keep URL alive so the user can still download the received file
-        // after the channel closes in later commits.
-      }
+      // Keep current download URL available for the user.
     };
 
     const handleError = (error: Error) => {

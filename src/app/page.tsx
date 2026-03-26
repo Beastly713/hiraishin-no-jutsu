@@ -194,6 +194,13 @@ export default function Home() {
         ...current,
         status: "transferring",
         errorMessage: null,
+        progress: {
+          ...current.progress,
+          fileName: senderTransferStream.fileName,
+          fileBytesTransferred: senderTransferStream.bytesAcknowledged,
+          fileBytesTotal: senderTransferStream.fileSize,
+          totalBytesTransferred: senderTransferStream.bytesAcknowledged,
+        },
       }));
       return;
     }
@@ -214,11 +221,21 @@ export default function Home() {
       setConnection((current) => ({
         ...current,
         status: "ready",
+        progress: {
+          ...current.progress,
+          fileName: senderTransferStream.fileName,
+          fileBytesTransferred: senderTransferStream.bytesAcknowledged,
+          fileBytesTotal: senderTransferStream.fileSize,
+          totalBytesTransferred: senderTransferStream.bytesAcknowledged,
+        },
       }));
     }
   }, [
     senderTransferMetadata.status,
+    senderTransferStream.bytesAcknowledged,
     senderTransferStream.errorMessage,
+    senderTransferStream.fileName,
+    senderTransferStream.fileSize,
     senderTransferStream.status,
   ]);
 
@@ -442,7 +459,7 @@ export default function Home() {
         sessionId: null,
         remotePeerId: null,
         status: "failed",
-        errorMessage: errorMessage,
+        errorMessage,
       }));
     } finally {
       setIsCreatingLink(false);
@@ -472,7 +489,7 @@ export default function Home() {
             ? data.error
             : "Failed to close transfer session.";
 
-        throw new Error(errorMessage);
+          throw new Error(errorMessage);
       }
 
       const nextSession = data as TransferSession;
@@ -599,7 +616,7 @@ export default function Home() {
               </p>
 
               <p className="mt-2 text-sm text-blue-100">
-                Streaming file chunks over the live peer channel.
+                Streaming file chunks and tracking receiver acknowledgements.
               </p>
 
               <div className="mt-4 grid gap-3 text-sm">
@@ -618,6 +635,13 @@ export default function Home() {
                 </div>
 
                 <div className="flex items-center justify-between gap-4">
+                  <span className="text-blue-200/70">Bytes acknowledged</span>
+                  <span className="font-medium text-blue-100">
+                    {formatBytes(senderTransferStream.bytesAcknowledged)}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
                   <span className="text-blue-200/70">Offset</span>
                   <span className="font-medium text-blue-100">
                     {senderTransferStream.offset}
@@ -626,8 +650,8 @@ export default function Home() {
               </div>
 
               <p className="mt-4 text-xs text-blue-200/80">
-                This commit wires sender-side chunk streaming only. Receiver-side
-                chunk handling and acknowledgements land in the next phase-3 commits.
+                This commit makes sender progress acknowledgement-driven. Multi-file
+                sequencing and final transfer completion land next.
               </p>
             </div>
           )}
