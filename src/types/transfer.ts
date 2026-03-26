@@ -66,33 +66,14 @@ export type TransferChunkAckMessage = {
   payload: TransferChunkAckPayload;
 };
 
-export type TransferPauseMessage = {
-  type: "pause";
-};
-
 export type TransferDoneMessage = {
   type: "done";
+  payload: null;
 };
 
 export type TransferErrorMessage = {
   type: "error";
   payload: TransferErrorPayload;
-};
-
-export type TransferPasswordRequiredMessage = {
-  type: "password_required";
-  payload?: {
-    reason?: string;
-  };
-};
-
-export type TransferUsePasswordMessage = {
-  type: "use_password";
-  payload: TransferPasswordPayload;
-};
-
-export type TransferReportMessage = {
-  type: "report";
 };
 
 export type TransferMessage =
@@ -101,9 +82,5 @@ export type TransferMessage =
   | TransferStartMessage
   | TransferChunkMessage
   | TransferChunkAckMessage
-  | TransferPauseMessage
   | TransferDoneMessage
-  | TransferErrorMessage
-  | TransferPasswordRequiredMessage
-  | TransferUsePasswordMessage
-  | TransferReportMessage;
+  | TransferErrorMessage;
