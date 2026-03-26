@@ -28,6 +28,7 @@ export function ReceiverSessionView({
   const [session, setSession] = useState<TransferSession | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [retryNonce, setRetryNonce] = useState(0);
+  const [transportRetryNonce, setTransportRetryNonce] = useState(0);
   const [connection, setConnection] = useState<TransferConnectionState>(() =>
     createTransferConnectionState({
       role: "receiver",
@@ -47,10 +48,11 @@ export function ReceiverSessionView({
       !!session &&
       session.status !== "closed" &&
       session.receiverPeerId === receiverPeerId,
+    retryKey: transportRetryNonce,
   });
 
   const receiverTransferMetadata = useReceiverTransferMetadata({
-  connection: receiverTransferPeer.connection,
+    connection: receiverTransferPeer.connection,
   });
 
   useEffect(() => {
@@ -100,9 +102,10 @@ export function ReceiverSessionView({
       if (receiverTransferPeer.status === "closed") {
         return {
           ...current,
+          remotePeerId: receiverTransferPeer.remotePeerId,
           status:
             current.sessionId && current.remotePeerId
-              ? "connecting"
+              ? "closed"
               : current.status,
           errorMessage: null,
         };
@@ -116,7 +119,7 @@ export function ReceiverSessionView({
     receiverTransferPeer.status,
   ]);
 
-    useEffect(() => {
+  useEffect(() => {
     setConnection((current) => {
       if (receiverTransferMetadata.status === "syncing") {
         return {
@@ -190,13 +193,14 @@ export function ReceiverSessionView({
     async function loadSession() {
       setConnection((current) => ({
         ...current,
-          status:
-            current.status === "ready" ||
-            current.status === "syncing_metadata" ||
-            current.status === "connecting" ||
-            current.status === "connected"
-              ? current.status
-              : "resolving_session",
+        status:
+          current.status === "ready" ||
+          current.status === "syncing_metadata" ||
+          current.status === "connecting" ||
+          current.status === "connected" ||
+          current.status === "closed"
+            ? current.status
+            : "resolving_session",
         localPeerId: receiverPeerId,
         errorMessage: null,
       }));
@@ -338,6 +342,10 @@ export function ReceiverSessionView({
     setRetryNonce((current) => current + 1);
   };
 
+  const handleRetryTransport = () => {
+    setTransportRetryNonce((current) => current + 1);
+  };
+
   const isRetrying = connection.status === "resolving_session";
 
   return (
@@ -369,12 +377,14 @@ export function ReceiverSessionView({
               Session status
             </p>
             <p className="mt-2 text-sm text-zinc-200">
-                {connection.status === "ready"
-                  ? "Transfer metadata is synced. The connection is ready for the first transfer actions."
-                  : connection.status === "syncing_metadata"
-                    ? "Live connection is open. Requesting transfer metadata from the sender..."
-                    : connection.status === "connected"
-                      ? "Receiver is connected to the sender. Metadata exchange is next."
+              {connection.status === "ready"
+                ? "Transfer metadata is synced. The connection is ready for the first transfer actions."
+                : connection.status === "syncing_metadata"
+                  ? "Live connection is open. Requesting transfer metadata from the sender..."
+                  : connection.status === "connected"
+                    ? "Receiver is connected to the sender. Metadata exchange is next."
+                    : connection.status === "closed"
+                      ? "The live browser-to-browser channel was closed. You can try reconnecting while the session remains active."
                       : session.receiverPeerId
                         ? "Receiver joined. Opening live browser-to-browser connection..."
                         : "Joining receiver to session..."}
@@ -384,6 +394,33 @@ export function ReceiverSessionView({
             </p>
           </div>
         )}
+
+        {session &&
+          !isClosedSession &&
+          (connection.status === "closed" || connection.status === "failed") && (
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
+              <p className="text-xs uppercase tracking-wide text-zinc-500">
+                Live channel
+              </p>
+              <p className="mt-2 text-sm text-zinc-200">
+                {connection.status === "failed"
+                  ? "The peer channel failed before transfer began."
+                  : "The peer channel closed before transfer began."}
+              </p>
+              <p className="mt-1 text-xs text-zinc-400">
+                The session is still active, so you can retry the live browser connection without creating a new link.
+              </p>
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={handleRetryTransport}
+                  className="inline-flex items-center rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-900"
+                >
+                  Reconnect channel
+                </button>
+              </div>
+            </div>
+          )}
 
         {isClosedSession && session && (
           <div className="rounded-2xl border border-amber-900/60 bg-amber-950/40 px-4 py-4">

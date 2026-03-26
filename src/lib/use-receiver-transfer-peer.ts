@@ -9,6 +9,7 @@ type UseReceiverTransferPeerOptions = {
   sessionId: string | null;
   senderPeerId: string | null;
   enabled: boolean;
+  retryKey?: number;
 };
 
 type ReceiverTransferPeerSnapshot = {
@@ -30,6 +31,7 @@ export function useReceiverTransferPeer({
   sessionId,
   senderPeerId,
   enabled,
+  retryKey = 0,
 }: UseReceiverTransferPeerOptions) {
   const [snapshot, setSnapshot] =
     useState<ReceiverTransferPeerSnapshot>(INITIAL_STATE);
@@ -90,11 +92,9 @@ export function useReceiverTransferPeer({
       connection.off("close", handleClose);
       connection.off("error", handleError);
 
-      if (connection.open) {
-        connection.close();
-      }
+      connection.close();
     };
-  }, [enabled, peer, senderPeerId, sessionId]);
+  }, [enabled, peer, retryKey, senderPeerId, sessionId]);
 
   return snapshot;
 }

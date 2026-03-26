@@ -55,13 +55,25 @@ export function useSenderTransferPeer({
       return;
     }
 
-    setSnapshot((current) => ({
-      ...current,
+    let activeConnection: DataConnection | null = null;
+
+    setSnapshot({
+      connection: null,
+      remotePeerId: null,
       status: "listening",
       errorMessage: null,
-    }));
+    });
 
-    let activeConnection: DataConnection | null = null;
+    const cleanupActiveConnection = () => {
+      if (!activeConnection) {
+        return;
+      }
+
+      activeConnection.removeAllListeners("open");
+      activeConnection.removeAllListeners("close");
+      activeConnection.removeAllListeners("error");
+      activeConnection = null;
+    };
 
     const handleIncomingConnection = (connection: DataConnection) => {
       if (!isMatchingSessionConnection(connection, sessionId)) {
@@ -93,6 +105,7 @@ export function useSenderTransferPeer({
       };
 
       const handleClose = () => {
+        cleanupActiveConnection();
         setSnapshot({
           connection: null,
           remotePeerId: connection.peer,
@@ -102,6 +115,7 @@ export function useSenderTransferPeer({
       };
 
       const handleError = (error: Error) => {
+        cleanupActiveConnection();
         setSnapshot({
           connection: null,
           remotePeerId: connection.peer,
@@ -116,6 +130,7 @@ export function useSenderTransferPeer({
     };
 
     const handlePeerError = (error: Error) => {
+      cleanupActiveConnection();
       setSnapshot({
         connection: null,
         remotePeerId: null,
@@ -131,9 +146,11 @@ export function useSenderTransferPeer({
       peer.off("connection", handleIncomingConnection);
       peer.off("error", handlePeerError);
 
-      if (activeConnection && activeConnection.open) {
+      if (activeConnection) {
         activeConnection.close();
       }
+
+      cleanupActiveConnection();
     };
   }, [peer, sessionId]);
 

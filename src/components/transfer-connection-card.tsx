@@ -20,6 +20,8 @@ function getConnectionHint(connection: TransferConnectionState) {
       return "The receiver has requested transfer info and the sender is responding with file metadata.";
     case "ready":
       return "The live channel and initial metadata handshake are complete. Transfer start can be wired next.";
+    case "closed":
+      return "The live peer channel closed before transfer started.";
     default:
       return "Peer transport is not connected yet. Upcoming commits will wire this state to the real browser-to-browser flow.";
   }

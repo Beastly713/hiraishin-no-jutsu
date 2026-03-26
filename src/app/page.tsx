@@ -48,7 +48,7 @@ export default function Home() {
     peer: browserPeer.peer,
     sessionId: session?.status === "closed" ? null : session?.id ?? null,
   });
-    const senderTransferMetadata = useSenderTransferMetadata({
+  const senderTransferMetadata = useSenderTransferMetadata({
     connection: senderTransferPeer.connection,
     files: session?.files ?? [],
   });
@@ -143,9 +143,10 @@ export default function Home() {
       if (senderTransferPeer.status === "closed") {
         return {
           ...current,
+          remotePeerId: senderTransferPeer.remotePeerId,
           status:
             current.sessionId && current.remotePeerId
-              ? "connecting"
+              ? "closed"
               : current.status,
           errorMessage: null,
         };
@@ -154,7 +155,9 @@ export default function Home() {
       if (
         senderTransferPeer.status === "listening" &&
         current.sessionId &&
-        current.remotePeerId
+        current.remotePeerId &&
+        current.status !== "ready" &&
+        current.status !== "syncing_metadata"
       ) {
         return {
           ...current,
@@ -232,12 +235,14 @@ export default function Home() {
             current.status === "ready"
               ? "ready"
               : current.status === "syncing_metadata"
-              ? "syncing_metadata"
-              : current.status === "connected"
-                ? "connected"
-                : nextSession.receiverPeerId
-                  ? "connecting"
-                  : "waiting_for_peer",
+                ? "syncing_metadata"
+                : current.status === "connected"
+                  ? "connected"
+                  : current.status === "closed" && nextSession.receiverPeerId
+                    ? "closed"
+                    : nextSession.receiverPeerId
+                      ? "connecting"
+                      : "waiting_for_peer",
           errorMessage: null,
         }));
       } catch {
