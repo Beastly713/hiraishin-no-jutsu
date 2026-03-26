@@ -9,6 +9,7 @@ import { TransferConnectionCard } from "@/components/transfer-connection-card";
 import { formatBytes } from "@/lib/format";
 import { createTransferConnectionState } from "@/lib/transfer-connection";
 import { useBrowserPeer } from "@/lib/use-browser-peer";
+import { useSenderTransferPeer } from "@/lib/use-sender-transfer-peer";
 import {
   SenderSessionKeepaliveStatus,
   TransferFileSummary,
@@ -42,6 +43,11 @@ export default function Home() {
 
   const browserPeer = useBrowserPeer();
   const senderPeerId = browserPeer.peerId;
+  const senderTransferPeer = useSenderTransferPeer({
+    peer: browserPeer.peer,
+    sessionId: session?.status === "closed" ? null : session?.id ?? null,
+  });
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -57,6 +63,57 @@ export default function Home() {
       errorMessage: browserPeer.errorMessage,
     }));
   }, [browserPeer.errorMessage, browserPeer.status, senderPeerId]);
+
+  useEffect(() => {
+    setConnection((current) => {
+      if (senderTransferPeer.status === "connected") {
+        return {
+          ...current,
+          remotePeerId: senderTransferPeer.remotePeerId,
+          status: "connected",
+          errorMessage: null,
+        };
+      }
+
+      if (senderTransferPeer.status === "failed") {
+        return {
+          ...current,
+          remotePeerId: senderTransferPeer.remotePeerId,
+          status: "failed",
+          errorMessage: senderTransferPeer.errorMessage,
+        };
+      }
+
+      if (senderTransferPeer.status === "closed") {
+        return {
+          ...current,
+          status:
+            current.sessionId && current.remotePeerId
+              ? "connecting"
+              : current.status,
+          errorMessage: null,
+        };
+      }
+
+      if (
+        senderTransferPeer.status === "listening" &&
+        current.sessionId &&
+        current.remotePeerId
+      ) {
+        return {
+          ...current,
+          status: "connecting",
+          errorMessage: null,
+        };
+      }
+
+      return current;
+    });
+  }, [
+    senderTransferPeer.errorMessage,
+    senderTransferPeer.remotePeerId,
+    senderTransferPeer.status,
+  ]);
 
   const totalSize = useMemo(() => {
     return selectedFiles.reduce((sum, file) => sum + file.size, 0);
@@ -115,7 +172,12 @@ export default function Home() {
           sessionId: nextSession.id,
           localPeerId: senderPeerId,
           remotePeerId: nextSession.receiverPeerId,
-          status: nextSession.receiverPeerId ? "connecting" : "waiting_for_peer",
+          status:
+            current.status === "connected"
+              ? "connected"
+              : nextSession.receiverPeerId
+                ? "connecting"
+                : "waiting_for_peer",
           errorMessage: null,
         }));
       } catch {
@@ -289,7 +351,7 @@ export default function Home() {
             ? data.error
             : "Failed to close transfer session.";
 
-          throw new Error(errorMessage);
+        throw new Error(errorMessage);
       }
 
       const nextSession = data as TransferSession;

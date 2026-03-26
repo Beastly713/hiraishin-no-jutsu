@@ -13,9 +13,9 @@ function getConnectionHint(connection: TransferConnectionState) {
     case "waiting_for_peer":
       return "Waiting for the other browser to join this transfer session.";
     case "connecting":
-      return "Both peers are known. The browser-to-browser transport handshake is the next step.";
+      return "The receiver is attempting to open the live PeerJS data channel.";
     case "connected":
-      return "Peer transport is connected. Metadata sync is next.";
+      return "The browser-to-browser data channel is open. Metadata exchange is next.";
     case "syncing_metadata":
       return "Transport is live and transfer metadata is being exchanged.";
     case "ready":

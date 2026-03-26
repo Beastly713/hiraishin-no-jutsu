@@ -8,6 +8,7 @@ import { formatBytes } from "@/lib/format";
 import { createTransferConnectionState } from "@/lib/transfer-connection";
 import { isValidSessionId } from "@/lib/session";
 import { useBrowserPeer } from "@/lib/use-browser-peer";
+import { useReceiverTransferPeer } from "@/lib/use-receiver-transfer-peer";
 import { TransferSession } from "@/types/session";
 import { TransferConnectionState } from "@/types/transfer-connection";
 
@@ -36,6 +37,17 @@ export function ReceiverSessionView({
   const isValidId = useMemo(() => isValidSessionId(sessionId), [sessionId]);
   const isClosedSession = session?.status === "closed";
 
+  const receiverTransferPeer = useReceiverTransferPeer({
+    peer: browserPeer.peer,
+    sessionId: session?.status === "closed" ? null : session?.id ?? null,
+    senderPeerId: session?.senderPeerId ?? null,
+    enabled:
+      !!receiverPeerId &&
+      !!session &&
+      session.status !== "closed" &&
+      session.receiverPeerId === receiverPeerId,
+  });
+
   useEffect(() => {
     setConnection((current) => ({
       ...current,
@@ -50,6 +62,54 @@ export function ReceiverSessionView({
       errorMessage: browserPeer.errorMessage,
     }));
   }, [browserPeer.errorMessage, browserPeer.status, receiverPeerId]);
+
+  useEffect(() => {
+    setConnection((current) => {
+      if (receiverTransferPeer.status === "connecting") {
+        return {
+          ...current,
+          remotePeerId: receiverTransferPeer.remotePeerId,
+          status: "connecting",
+          errorMessage: null,
+        };
+      }
+
+      if (receiverTransferPeer.status === "connected") {
+        return {
+          ...current,
+          remotePeerId: receiverTransferPeer.remotePeerId,
+          status: "connected",
+          errorMessage: null,
+        };
+      }
+
+      if (receiverTransferPeer.status === "failed") {
+        return {
+          ...current,
+          remotePeerId: receiverTransferPeer.remotePeerId,
+          status: "failed",
+          errorMessage: receiverTransferPeer.errorMessage,
+        };
+      }
+
+      if (receiverTransferPeer.status === "closed") {
+        return {
+          ...current,
+          status:
+            current.sessionId && current.remotePeerId
+              ? "connecting"
+              : current.status,
+          errorMessage: null,
+        };
+      }
+
+      return current;
+    });
+  }, [
+    receiverTransferPeer.errorMessage,
+    receiverTransferPeer.remotePeerId,
+    receiverTransferPeer.status,
+  ]);
 
   useEffect(() => {
     if (!isValidId) {
@@ -76,7 +136,8 @@ export function ReceiverSessionView({
       setConnection((current) => ({
         ...current,
         status:
-          current.status === "connecting" && !isClosedSession
+          current.status === "connecting" ||
+          current.status === "connected"
             ? current.status
             : "resolving_session",
         localPeerId: receiverPeerId,
@@ -170,7 +231,8 @@ export function ReceiverSessionView({
           sessionId: nextSession.id,
           localPeerId: receiverPeerId,
           remotePeerId: nextSession.senderPeerId,
-          status: "connecting",
+          status:
+            current.status === "connected" ? "connected" : "connecting",
           errorMessage: null,
         }));
       } catch (error) {
@@ -207,7 +269,7 @@ export function ReceiverSessionView({
         window.clearInterval(intervalId);
       }
     };
-  }, [isClosedSession, isValidId, receiverPeerId, retryNonce, sessionId]);
+  }, [isValidId, receiverPeerId, retryNonce, sessionId]);
 
   const handleRetryLookup = () => {
     setRetryNonce((current) => current + 1);
@@ -244,9 +306,11 @@ export function ReceiverSessionView({
               Session status
             </p>
             <p className="mt-2 text-sm text-zinc-200">
-              {session.receiverPeerId
-                ? "Receiver joined. Browser peer is ready for transport setup."
-                : "Joining receiver to session..."}
+              {connection.status === "connected"
+                ? "Receiver is connected to the sender. Metadata exchange is next."
+                : session.receiverPeerId
+                  ? "Receiver joined. Opening live browser-to-browser connection..."
+                  : "Joining receiver to session..."}
             </p>
             <p className="mt-1 text-xs text-zinc-400">
               Session availability is checked every 5 seconds.
