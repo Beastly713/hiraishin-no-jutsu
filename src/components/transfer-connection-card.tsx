@@ -23,7 +23,7 @@ function getConnectionHint(connection: TransferConnectionState) {
     case "closed":
       return "The live peer channel closed before transfer started.";
     default:
-      return "Peer transport is not connected yet. Upcoming commits will wire this state to the real browser-to-browser flow.";
+      return "The live channel hit a transport or protocol error before transfer started.";
   }
 }
 

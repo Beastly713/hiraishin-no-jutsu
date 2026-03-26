@@ -404,7 +404,7 @@ export function ReceiverSessionView({
               </p>
               <p className="mt-2 text-sm text-zinc-200">
                 {connection.status === "failed"
-                  ? "The peer channel failed before transfer began."
+                  ? "The peer channel failed or received an invalid handshake message before transfer began."
                   : "The peer channel closed before transfer began."}
               </p>
               <p className="mt-1 text-xs text-zinc-400">

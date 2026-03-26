@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from "react";
 import type { DataConnection } from "peerjs";
-import { createInfoMessage, isTransferRequestInfoMessage } from "@/lib/transfer-protocol";
+import {
+  createErrorMessage,
+  createInfoMessage,
+  getUnexpectedHandshakeMessageError,
+  isTransferErrorMessage,
+  isTransferRequestInfoMessage,
+} from "@/lib/transfer-protocol";
 import { TransferFileSummary } from "@/types/session";
 import { DeviceInfo } from "@/types/transfer";
 
@@ -36,8 +42,37 @@ export function useSenderTransferMetadata({
       return;
     }
 
+    const handleProtocolFailure = (message: string) => {
+      try {
+        connection.send(createErrorMessage(message));
+      } catch {
+        // Best effort only.
+      }
+
+      setSnapshot({
+        status: "failed",
+        deviceInfo: null,
+        errorMessage: message,
+      });
+
+      connection.close();
+    };
+
     const handleData = (value: unknown) => {
+      if (isTransferErrorMessage(value)) {
+        setSnapshot({
+          status: "failed",
+          deviceInfo: null,
+          errorMessage: value.payload.message,
+        });
+        connection.close();
+        return;
+      }
+
       if (!isTransferRequestInfoMessage(value)) {
+        handleProtocolFailure(
+          getUnexpectedHandshakeMessageError(value, "request_info"),
+        );
         return;
       }
 
