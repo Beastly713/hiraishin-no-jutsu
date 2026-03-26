@@ -1,13 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DataConnection } from "peerjs";
 import {
   createErrorMessage,
   createInfoMessage,
   getUnexpectedHandshakeMessageError,
+  isTransferChunkAckMessage,
+  isTransferDoneMessage,
   isTransferErrorMessage,
   isTransferRequestInfoMessage,
+  isTransferStartMessage,
 } from "@/lib/transfer-protocol";
 import { TransferFileSummary } from "@/types/session";
 import { DeviceInfo } from "@/types/transfer";
@@ -36,13 +39,19 @@ export function useSenderTransferMetadata({
   const [snapshot, setSnapshot] =
     useState<SenderTransferMetadataSnapshot>(INITIAL_STATE);
 
+  const snapshotRef = useRef(snapshot);
+
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+  }, [snapshot]);
+
   useEffect(() => {
     if (!connection) {
       setSnapshot(INITIAL_STATE);
       return;
     }
 
-    const handleProtocolFailure = (message: string) => {
+    const failHandshake = (message: string) => {
       try {
         connection.send(createErrorMessage(message));
       } catch {
@@ -69,18 +78,21 @@ export function useSenderTransferMetadata({
         return;
       }
 
-      if (!isTransferRequestInfoMessage(value)) {
-        handleProtocolFailure(
-          getUnexpectedHandshakeMessageError(value, "request_info"),
-        );
+      const hasCompletedHandshake = snapshotRef.current.status === "ready";
+
+      if (
+        hasCompletedHandshake &&
+        (isTransferStartMessage(value) ||
+          isTransferChunkAckMessage(value) ||
+          isTransferDoneMessage(value))
+      ) {
         return;
       }
 
-      setSnapshot({
-        status: "syncing",
-        deviceInfo: value.payload,
-        errorMessage: null,
-      });
+      if (!isTransferRequestInfoMessage(value)) {
+        failHandshake(getUnexpectedHandshakeMessageError(value, "request_info"));
+        return;
+      }
 
       try {
         connection.send(
@@ -110,6 +122,14 @@ export function useSenderTransferMetadata({
       }
     };
 
+    const handleOpen = () => {
+      setSnapshot({
+        status: "syncing",
+        deviceInfo: null,
+        errorMessage: null,
+      });
+    };
+
     const handleError = (error: Error) => {
       setSnapshot((current) => ({
         ...current,
@@ -118,10 +138,12 @@ export function useSenderTransferMetadata({
       }));
     };
 
+    connection.on("open", handleOpen);
     connection.on("data", handleData);
     connection.on("error", handleError);
 
     return () => {
+      connection.off("open", handleOpen);
       connection.off("data", handleData);
       connection.off("error", handleError);
     };

@@ -10,10 +10,11 @@ import { createTransferConnectionState } from "@/lib/transfer-connection";
 import { isTransferReadyToStart } from "@/lib/transfer-readiness";
 import { isValidSessionId } from "@/lib/session";
 import { useBrowserPeer } from "@/lib/use-browser-peer";
+import { useReceiverTransferMetadata } from "@/lib/use-receiver-transfer-metadata";
 import { useReceiverTransferPeer } from "@/lib/use-receiver-transfer-peer";
+import { useReceiverTransferStart } from "@/lib/use-receiver-transfer-start";
 import { TransferSession } from "@/types/session";
 import { TransferConnectionState } from "@/types/transfer-connection";
-import { useReceiverTransferMetadata } from "@/lib/use-receiver-transfer-metadata";
 
 type ReceiverSessionViewProps = {
   sessionId: string;
@@ -26,7 +27,6 @@ export function ReceiverSessionView({
 }: ReceiverSessionViewProps) {
   const browserPeer = useBrowserPeer();
   const receiverPeerId = browserPeer.peerId;
-
   const [session, setSession] = useState<TransferSession | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [retryNonce, setRetryNonce] = useState(0);
@@ -55,6 +55,11 @@ export function ReceiverSessionView({
 
   const receiverTransferMetadata = useReceiverTransferMetadata({
     connection: receiverTransferPeer.connection,
+  });
+
+  const receiverTransferStart = useReceiverTransferStart({
+    connection: receiverTransferPeer.connection,
+    infoPayload: receiverTransferMetadata.infoPayload,
   });
 
   useEffect(() => {
@@ -106,9 +111,7 @@ export function ReceiverSessionView({
           ...current,
           remotePeerId: receiverTransferPeer.remotePeerId,
           status:
-            current.sessionId && current.remotePeerId
-              ? "closed"
-              : current.status,
+            current.sessionId && current.remotePeerId ? "closed" : current.status,
           errorMessage: null,
         };
       }
@@ -212,6 +215,7 @@ export function ReceiverSessionView({
           method: "GET",
           cache: "no-store",
         });
+
         const data: unknown = await response.json();
 
         if (!response.ok) {
@@ -231,7 +235,6 @@ export function ReceiverSessionView({
         }
 
         const nextSession = data as TransferSession;
-
         setSession(nextSession);
         setLookupError(null);
 
@@ -257,6 +260,7 @@ export function ReceiverSessionView({
               receiverPeerId,
             }),
           });
+
           const joinData: unknown = await joinResponse.json();
 
           if (!joinResponse.ok) {
@@ -276,7 +280,6 @@ export function ReceiverSessionView({
           }
 
           const joinedSession = joinData as TransferSession;
-
           setSession(joinedSession);
           setConnection((current) => ({
             ...current,
@@ -334,6 +337,7 @@ export function ReceiverSessionView({
 
     return () => {
       isCancelled = true;
+
       if (intervalId !== null) {
         window.clearInterval(intervalId);
       }
@@ -355,9 +359,11 @@ export function ReceiverSessionView({
       <p className="text-sm uppercase tracking-[0.2em] text-zinc-400">
         Receiver
       </p>
+
       <h1 className="mt-4 text-3xl font-bold tracking-tight sm:text-5xl">
         Incoming transfer
       </h1>
+
       <p className="mt-4 text-sm leading-6 text-zinc-400 sm:text-base">
         Resolve the shared session and prepare for the upcoming direct transfer
         flow.
@@ -390,24 +396,70 @@ export function ReceiverSessionView({
           />
         )}
 
+        {isTransferReadyToStart(connection.status) && (
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
+            <p className="text-xs uppercase tracking-wide text-zinc-500">
+              Transfer start
+            </p>
+
+            <p className="mt-2 text-sm text-zinc-200">
+              {receiverTransferStart.status === "started"
+                ? `Transfer start requested for ${receiverTransferStart.requestedFileName}.`
+                : "The live channel is ready. Start the first file request from the receiver side."}
+            </p>
+
+            <p className="mt-1 text-xs text-zinc-400">
+              This commit only sends the first start request. Actual file
+              streaming remains in the next phase-3 commit.
+            </p>
+
+            {receiverTransferStart.errorMessage && (
+              <div className="mt-4 rounded-xl border border-red-900/60 bg-red-950/40 px-4 py-3">
+                <p className="text-sm text-red-200">
+                  {receiverTransferStart.errorMessage}
+                </p>
+              </div>
+            )}
+
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={receiverTransferStart.startTransfer}
+                disabled={!receiverTransferStart.canStart}
+                className="inline-flex items-center rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition disabled:cursor-not-allowed disabled:border-zinc-800 disabled:text-zinc-500 enabled:hover:border-zinc-500 enabled:hover:bg-zinc-900"
+              >
+                {receiverTransferStart.status === "starting"
+                  ? "Starting..."
+                  : receiverTransferStart.status === "started"
+                    ? "Transfer requested"
+                    : "Start transfer"}
+              </button>
+            </div>
+          </div>
+        )}
+
         {session && !isClosedSession && (
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
             <p className="text-xs uppercase tracking-wide text-zinc-500">
               Session status
             </p>
+
             <p className="mt-2 text-sm text-zinc-200">
-              {connection.status === "ready"
-                ? "Transfer metadata is synced. The connection is ready for the first transfer actions."
-                : connection.status === "syncing_metadata"
-                  ? "Live connection is open. Requesting transfer metadata from the sender..."
-                  : connection.status === "connected"
-                    ? "Receiver is connected to the sender. Metadata exchange is next."
-                    : connection.status === "closed"
-                      ? "The live browser-to-browser channel was closed. You can try reconnecting while the session remains active."
-                      : session.receiverPeerId
-                        ? "Receiver joined. Opening live browser-to-browser connection..."
-                        : "Joining receiver to session..."}
+              {receiverTransferStart.status === "started"
+                ? "The receiver has sent the first transfer-start request. Waiting for sender-side streaming."
+                : connection.status === "ready"
+                  ? "Transfer metadata is synced. The connection is ready for the first transfer actions."
+                  : connection.status === "syncing_metadata"
+                    ? "Live connection is open. Requesting transfer metadata from the sender..."
+                    : connection.status === "connected"
+                      ? "Receiver is connected to the sender. Metadata exchange is next."
+                      : connection.status === "closed"
+                        ? "The live browser-to-browser channel was closed. You can try reconnecting while the session remains active."
+                        : session.receiverPeerId
+                          ? "Receiver joined. Opening live browser-to-browser connection..."
+                          : "Joining receiver to session..."}
             </p>
+
             <p className="mt-1 text-xs text-zinc-400">
               Session availability is checked every 5 seconds.
             </p>
@@ -421,14 +473,18 @@ export function ReceiverSessionView({
               <p className="text-xs uppercase tracking-wide text-zinc-500">
                 Live channel
               </p>
+
               <p className="mt-2 text-sm text-zinc-200">
                 {connection.status === "failed"
                   ? "The peer channel failed before transfer began."
                   : "The peer channel closed before transfer began."}
               </p>
+
               <p className="mt-1 text-xs text-zinc-400">
-                The session is still active, so you can retry the live browser connection without creating a new link.
+                The session is still active, so you can retry the live browser
+                connection without creating a new link.
               </p>
+
               <div className="mt-4">
                 <button
                   type="button"
@@ -446,13 +502,16 @@ export function ReceiverSessionView({
             <p className="text-xs uppercase tracking-wide text-amber-400">
               Status
             </p>
+
             <p className="mt-2 text-sm text-amber-100">
               This transfer session is closed.
             </p>
+
             <p className="mt-1 text-xs text-amber-200/80">
               The sender is no longer keeping this link active, so the transfer
               cannot continue from this page.
             </p>
+
             <div className="mt-4 flex flex-wrap gap-3">
               <button
                 type="button"
@@ -462,6 +521,7 @@ export function ReceiverSessionView({
               >
                 {isRetrying ? "Checking..." : "Check again"}
               </button>
+
               <Link
                 href="/"
                 className="inline-flex items-center rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-950"
@@ -477,10 +537,13 @@ export function ReceiverSessionView({
             <p className="text-xs uppercase tracking-wide text-red-400">
               Status
             </p>
+
             <p className="mt-2 text-sm text-red-100">{lookupError}</p>
+
             <p className="mt-1 text-xs text-red-200/80">
               The link may be expired, invalid, or no longer available.
             </p>
+
             {isValidId && (
               <div className="mt-4">
                 <button
@@ -502,6 +565,7 @@ export function ReceiverSessionView({
               <p className="text-xs uppercase tracking-wide text-zinc-500">
                 Session summary
               </p>
+
               <div className="mt-3 grid gap-3 text-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-400">Status</span>
@@ -509,18 +573,21 @@ export function ReceiverSessionView({
                     {session.status === "closed" ? "Closed" : "Ready"}
                   </span>
                 </div>
+
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-400">Sender peer</span>
                   <span className="font-medium text-zinc-200">
                     {session.senderPeerId}
                   </span>
                 </div>
+
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-400">Receiver peer</span>
                   <span className="font-medium text-zinc-200">
                     {session.receiverPeerId ?? "Waiting..."}
                   </span>
                 </div>
+
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-400">Receiver joined</span>
                   <span className="font-medium text-zinc-200">
@@ -529,18 +596,21 @@ export function ReceiverSessionView({
                       : "Not yet"}
                   </span>
                 </div>
+
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-400">Files</span>
                   <span className="font-medium text-zinc-200">
                     {session.fileCount}
                   </span>
                 </div>
+
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-400">Total size</span>
                   <span className="font-medium text-zinc-200">
                     {formatBytes(session.totalSize)}
                   </span>
                 </div>
+
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-400">Expires</span>
                   <span className="font-medium text-zinc-200">

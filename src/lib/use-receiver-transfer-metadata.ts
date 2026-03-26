@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { DataConnection } from "peerjs";
 import { getLocalDeviceInfo } from "@/lib/device";
 import {
   createErrorMessage,
   createRequestInfoMessage,
   getUnexpectedHandshakeMessageError,
+  isTransferChunkMessage,
+  isTransferDoneMessage,
   isTransferErrorMessage,
   isTransferInfoMessage,
 } from "@/lib/transfer-protocol";
@@ -36,7 +38,12 @@ export function useReceiverTransferMetadata({
   const [snapshot, setSnapshot] =
     useState<ReceiverTransferMetadataSnapshot>(INITIAL_STATE);
 
+  const snapshotRef = useRef(snapshot);
   const deviceInfo = useMemo(() => getLocalDeviceInfo(), []);
+
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+  }, [snapshot]);
 
   useEffect(() => {
     if (!connection) {
@@ -96,6 +103,15 @@ export function useReceiverTransferMetadata({
           errorMessage: value.payload.message,
         });
         connection.close();
+        return;
+      }
+
+      const hasCompletedHandshake = snapshotRef.current.status === "ready";
+
+      if (
+        hasCompletedHandshake &&
+        (isTransferChunkMessage(value) || isTransferDoneMessage(value))
+      ) {
         return;
       }
 
