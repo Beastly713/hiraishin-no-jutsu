@@ -10,6 +10,7 @@ import { createTransferConnectionState } from "@/lib/transfer-connection";
 import { isTransferReadyToStart } from "@/lib/transfer-readiness";
 import { isValidSessionId } from "@/lib/session";
 import { useBrowserPeer } from "@/lib/use-browser-peer";
+import { useReceiverTransferDownload } from "@/lib/use-receiver-transfer-download";
 import { useReceiverTransferMetadata } from "@/lib/use-receiver-transfer-metadata";
 import { useReceiverTransferPeer } from "@/lib/use-receiver-transfer-peer";
 import { useReceiverTransferStart } from "@/lib/use-receiver-transfer-start";
@@ -58,6 +59,11 @@ export function ReceiverSessionView({
   });
 
   const receiverTransferStart = useReceiverTransferStart({
+    connection: receiverTransferPeer.connection,
+    infoPayload: receiverTransferMetadata.infoPayload,
+  });
+
+  const receiverTransferDownload = useReceiverTransferDownload({
     connection: receiverTransferPeer.connection,
     infoPayload: receiverTransferMetadata.infoPayload,
   });
@@ -175,6 +181,54 @@ export function ReceiverSessionView({
   ]);
 
   useEffect(() => {
+    setConnection((current) => {
+      if (
+        receiverTransferDownload.status === "downloading" ||
+        receiverTransferDownload.status === "file_ready"
+      ) {
+        return {
+          ...current,
+          status: "transferring",
+          errorMessage: null,
+          progress: {
+            ...current.progress,
+            fileName: receiverTransferDownload.fileName,
+            fileIndex: receiverTransferDownload.fileIndex,
+            totalFiles:
+              receiverTransferDownload.totalFiles || current.progress.totalFiles,
+            fileBytesTransferred: receiverTransferDownload.fileBytesReceived,
+            fileBytesTotal: receiverTransferDownload.fileBytesTotal,
+            totalBytesTransferred: receiverTransferDownload.totalBytesReceived,
+            totalBytesTotal:
+              receiverTransferDownload.totalBytesTotal ||
+              current.progress.totalBytesTotal,
+          },
+        };
+      }
+
+      if (receiverTransferDownload.status === "failed") {
+        return {
+          ...current,
+          status: "failed",
+          errorMessage: receiverTransferDownload.errorMessage,
+        };
+      }
+
+      return current;
+    });
+  }, [
+    receiverTransferDownload.errorMessage,
+    receiverTransferDownload.fileBytesReceived,
+    receiverTransferDownload.fileBytesTotal,
+    receiverTransferDownload.fileIndex,
+    receiverTransferDownload.fileName,
+    receiverTransferDownload.status,
+    receiverTransferDownload.totalBytesReceived,
+    receiverTransferDownload.totalBytesTotal,
+    receiverTransferDownload.totalFiles,
+  ]);
+
+  useEffect(() => {
     if (!isValidId) {
       setSession(null);
       setLookupError("Invalid transfer link.");
@@ -203,6 +257,7 @@ export function ReceiverSessionView({
           current.status === "syncing_metadata" ||
           current.status === "connecting" ||
           current.status === "connected" ||
+          current.status === "transferring" ||
           current.status === "closed"
             ? current.status
             : "resolving_session",
@@ -298,13 +353,15 @@ export function ReceiverSessionView({
           localPeerId: receiverPeerId,
           remotePeerId: nextSession.senderPeerId,
           status:
-            current.status === "ready"
-              ? "ready"
-              : current.status === "syncing_metadata"
-                ? "syncing_metadata"
-                : current.status === "connected"
-                  ? "connected"
-                  : "connecting",
+            current.status === "transferring"
+              ? "transferring"
+              : current.status === "ready"
+                ? "ready"
+                : current.status === "syncing_metadata"
+                  ? "syncing_metadata"
+                  : current.status === "connected"
+                    ? "connected"
+                    : "connecting",
           errorMessage: null,
         }));
       } catch (error) {
@@ -396,7 +453,7 @@ export function ReceiverSessionView({
           />
         )}
 
-        {isTransferReadyToStart(connection.status) && (
+        {connection.status === "ready" && (
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
             <p className="text-xs uppercase tracking-wide text-zinc-500">
               Transfer start
@@ -409,8 +466,8 @@ export function ReceiverSessionView({
             </p>
 
             <p className="mt-1 text-xs text-zinc-400">
-              This commit only sends the first start request. Actual file
-              streaming remains in the next phase-3 commit.
+              This phase-3 step starts the first file request. Sender-side chunk
+              streaming is already wired.
             </p>
 
             {receiverTransferStart.errorMessage && (
@@ -438,6 +495,86 @@ export function ReceiverSessionView({
           </div>
         )}
 
+        {(receiverTransferDownload.status === "downloading" ||
+          receiverTransferDownload.status === "file_ready") && (
+          <div className="rounded-2xl border border-blue-900/60 bg-blue-950/30 px-4 py-4">
+            <p className="text-xs uppercase tracking-wide text-blue-400">
+              Receiver download
+            </p>
+
+            <p className="mt-2 text-sm text-blue-100">
+              {receiverTransferDownload.status === "file_ready"
+                ? "The first streamed file has been fully received."
+                : "Receiving real file chunks over the live peer channel."}
+            </p>
+
+            <div className="mt-4 grid gap-3 text-sm">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-blue-200/70">File</span>
+                <span className="font-medium text-blue-100">
+                  {receiverTransferDownload.fileName ?? "Waiting..."}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-blue-200/70">File progress</span>
+                <span className="font-medium text-blue-100">
+                  {formatBytes(receiverTransferDownload.fileBytesReceived)} /{" "}
+                  {formatBytes(receiverTransferDownload.fileBytesTotal)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-blue-200/70">Total progress</span>
+                <span className="font-medium text-blue-100">
+                  {formatBytes(receiverTransferDownload.totalBytesReceived)} /{" "}
+                  {formatBytes(receiverTransferDownload.totalBytesTotal)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-blue-200/70">File index</span>
+                <span className="font-medium text-blue-100">
+                  {receiverTransferDownload.fileIndex} /{" "}
+                  {receiverTransferDownload.totalFiles}
+                </span>
+              </div>
+            </div>
+
+            {receiverTransferDownload.downloadUrl &&
+              receiverTransferDownload.fileName && (
+                <div className="mt-4">
+                  <a
+                    href={receiverTransferDownload.downloadUrl}
+                    download={receiverTransferDownload.fileName}
+                    className="inline-flex items-center rounded-full border border-blue-700 px-4 py-2 text-sm font-medium text-blue-100 transition hover:border-blue-500 hover:bg-blue-900/30"
+                  >
+                    Download received file
+                  </a>
+                </div>
+              )}
+
+            <p className="mt-4 text-xs text-blue-200/80">
+              This commit adds receiver-side chunk assembly and real byte
+              progress. Acknowledgements, sender progress based on acks, and
+              multi-file sequencing land in the next phase-3 commits.
+            </p>
+          </div>
+        )}
+
+        {receiverTransferDownload.status === "failed" && (
+          <div className="rounded-2xl border border-red-900/60 bg-red-950/40 px-4 py-4">
+            <p className="text-xs uppercase tracking-wide text-red-400">
+              Receiver download
+            </p>
+
+            <p className="mt-2 text-sm text-red-100">
+              {receiverTransferDownload.errorMessage ??
+                "Receiver-side transfer failed."}
+            </p>
+          </div>
+        )}
+
         {session && !isClosedSession && (
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
             <p className="text-xs uppercase tracking-wide text-zinc-500">
@@ -445,19 +582,23 @@ export function ReceiverSessionView({
             </p>
 
             <p className="mt-2 text-sm text-zinc-200">
-              {receiverTransferStart.status === "started"
-                ? "The receiver has sent the first transfer-start request. Waiting for sender-side streaming."
-                : connection.status === "ready"
-                  ? "Transfer metadata is synced. The connection is ready for the first transfer actions."
-                  : connection.status === "syncing_metadata"
-                    ? "Live connection is open. Requesting transfer metadata from the sender..."
-                    : connection.status === "connected"
-                      ? "Receiver is connected to the sender. Metadata exchange is next."
-                      : connection.status === "closed"
-                        ? "The live browser-to-browser channel was closed. You can try reconnecting while the session remains active."
-                        : session.receiverPeerId
-                          ? "Receiver joined. Opening live browser-to-browser connection..."
-                          : "Joining receiver to session..."}
+              {receiverTransferDownload.status === "file_ready"
+                ? "The first file was received successfully. The transfer flow remains mid-phase until acknowledgements and transfer completion are wired."
+                : receiverTransferDownload.status === "downloading"
+                  ? "The receiver is consuming live file chunks from the sender."
+                  : receiverTransferStart.status === "started"
+                    ? "The receiver has sent the first transfer-start request. Waiting for sender-side chunks."
+                    : connection.status === "ready"
+                      ? "Transfer metadata is synced. The connection is ready for the first transfer actions."
+                      : connection.status === "syncing_metadata"
+                        ? "Live connection is open. Requesting transfer metadata from the sender..."
+                        : connection.status === "connected"
+                          ? "Receiver is connected to the sender. Metadata exchange is next."
+                          : connection.status === "closed"
+                            ? "The live browser-to-browser channel was closed. You can try reconnecting while the session remains active."
+                            : session.receiverPeerId
+                              ? "Receiver joined. Opening live browser-to-browser connection..."
+                              : "Joining receiver to session..."}
             </p>
 
             <p className="mt-1 text-xs text-zinc-400">
@@ -476,8 +617,8 @@ export function ReceiverSessionView({
 
               <p className="mt-2 text-sm text-zinc-200">
                 {connection.status === "failed"
-                  ? "The peer channel failed before transfer began."
-                  : "The peer channel closed before transfer began."}
+                  ? "The peer channel failed before transfer completed."
+                  : "The peer channel closed before transfer completed."}
               </p>
 
               <p className="mt-1 text-xs text-zinc-400">
