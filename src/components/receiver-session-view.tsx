@@ -5,9 +5,9 @@ import Link from "next/link";
 import { SessionFileList } from "@/components/session-file-list";
 import { TransferConnectionCard } from "@/components/transfer-connection-card";
 import { formatBytes } from "@/lib/format";
-import { createPeerId } from "@/lib/peer";
 import { createTransferConnectionState } from "@/lib/transfer-connection";
 import { isValidSessionId } from "@/lib/session";
+import { useBrowserPeer } from "@/lib/use-browser-peer";
 import { TransferSession } from "@/types/session";
 import { TransferConnectionState } from "@/types/transfer-connection";
 
@@ -20,20 +20,36 @@ const SESSION_POLL_INTERVAL_MS = 5000;
 export function ReceiverSessionView({
   sessionId,
 }: ReceiverSessionViewProps) {
-  const [receiverPeerId] = useState(() => createPeerId());
+  const browserPeer = useBrowserPeer();
+  const receiverPeerId = browserPeer.peerId;
+
   const [session, setSession] = useState<TransferSession | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [retryNonce, setRetryNonce] = useState(0);
-  const [connection, setConnection] = useState<TransferConnectionState>(() => ({
-    ...createTransferConnectionState({
+  const [connection, setConnection] = useState<TransferConnectionState>(() =>
+    createTransferConnectionState({
       role: "receiver",
       sessionId,
     }),
-    localPeerId: receiverPeerId,
-  }));
+  );
 
   const isValidId = useMemo(() => isValidSessionId(sessionId), [sessionId]);
   const isClosedSession = session?.status === "closed";
+
+  useEffect(() => {
+    setConnection((current) => ({
+      ...current,
+      localPeerId: receiverPeerId,
+      status:
+        browserPeer.status === "failed"
+          ? "failed"
+          : current.status === "resolving_session" &&
+              browserPeer.status === "initializing"
+            ? "connecting"
+            : current.status,
+      errorMessage: browserPeer.errorMessage,
+    }));
+  }, [browserPeer.errorMessage, browserPeer.status, receiverPeerId]);
 
   useEffect(() => {
     if (!isValidId) {
@@ -46,6 +62,10 @@ export function ReceiverSessionView({
         remotePeerId: null,
         errorMessage: "Invalid transfer link.",
       }));
+      return;
+    }
+
+    if (!receiverPeerId) {
       return;
     }
 
@@ -225,7 +245,7 @@ export function ReceiverSessionView({
             </p>
             <p className="mt-2 text-sm text-zinc-200">
               {session.receiverPeerId
-                ? "Receiver joined. Browser-to-browser connection is starting."
+                ? "Receiver joined. Browser peer is ready for transport setup."
                 : "Joining receiver to session..."}
             </p>
             <p className="mt-1 text-xs text-zinc-400">

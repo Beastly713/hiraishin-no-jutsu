@@ -7,8 +7,8 @@ import { SessionSummaryCard } from "@/components/session-summary-card";
 import { TransferCard } from "@/components/transfer-card";
 import { TransferConnectionCard } from "@/components/transfer-connection-card";
 import { formatBytes } from "@/lib/format";
-import { createPeerId } from "@/lib/peer";
 import { createTransferConnectionState } from "@/lib/transfer-connection";
+import { useBrowserPeer } from "@/lib/use-browser-peer";
 import {
   SenderSessionKeepaliveStatus,
   TransferFileSummary,
@@ -33,7 +33,6 @@ export default function Home() {
   const [isCreatingLink, setIsCreatingLink] = useState(false);
   const [isClosingSession, setIsClosingSession] = useState(false);
   const [createLinkError, setCreateLinkError] = useState<string | null>(null);
-  const [senderPeerId, setSenderPeerId] = useState<string | null>(null);
   const [keepaliveStatus, setKeepaliveStatus] =
     useState<SenderSessionKeepaliveStatus>("idle");
   const [lastKeepaliveAt, setLastKeepaliveAt] = useState<string | null>(null);
@@ -41,16 +40,23 @@ export default function Home() {
     createTransferConnectionState({ role: "sender" }),
   );
 
+  const browserPeer = useBrowserPeer();
+  const senderPeerId = browserPeer.peerId;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    const peerId = createPeerId();
-    setSenderPeerId(peerId);
     setConnection((current) => ({
       ...current,
-      localPeerId: peerId,
+      localPeerId: senderPeerId,
+      status:
+        browserPeer.status === "failed"
+          ? "failed"
+          : current.status === "idle" && browserPeer.status === "initializing"
+            ? "connecting"
+            : current.status,
+      errorMessage: browserPeer.errorMessage,
     }));
-  }, []);
+  }, [browserPeer.errorMessage, browserPeer.status, senderPeerId]);
 
   const totalSize = useMemo(() => {
     return selectedFiles.reduce((sum, file) => sum + file.size, 0);
@@ -156,8 +162,8 @@ export default function Home() {
       ...current,
       sessionId: null,
       remotePeerId: null,
-      status: "idle",
-      errorMessage: null,
+      status: senderPeerId ? "idle" : "connecting",
+      errorMessage: browserPeer.errorMessage,
     }));
   };
 
@@ -283,7 +289,7 @@ export default function Home() {
             ? data.error
             : "Failed to close transfer session.";
 
-        throw new Error(errorMessage);
+          throw new Error(errorMessage);
       }
 
       const nextSession = data as TransferSession;
@@ -326,6 +332,7 @@ export default function Home() {
   const isReadyToCreateLink =
     selectedFiles.length > 0 &&
     !isCreatingLink &&
+    browserPeer.status === "open" &&
     !!senderPeerId &&
     session?.status !== "closed";
 
@@ -383,7 +390,9 @@ export default function Home() {
           <TransferCard
             canCreateLink={isReadyToCreateLink}
             isCreatingLink={isCreatingLink}
-            shareUrl={session?.status === "closed" ? null : session?.shareUrl ?? null}
+            shareUrl={
+              session?.status === "closed" ? null : session?.shareUrl ?? null
+            }
             onCreateLink={handleCreateLink}
             onCopyLink={handleCopyLink}
             hasCopiedLink={hasCopiedLink}
