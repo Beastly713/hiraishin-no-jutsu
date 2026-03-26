@@ -11,6 +11,7 @@ import { formatBytes } from "@/lib/format";
 import { createTransferConnectionState } from "@/lib/transfer-connection";
 import { isTransferReadyToStart } from "@/lib/transfer-readiness";
 import { useBrowserPeer } from "@/lib/use-browser-peer";
+import { useSenderTransferCompletion } from "@/lib/use-sender-transfer-completion";
 import { useSenderTransferMetadata } from "@/lib/use-sender-transfer-metadata";
 import { useSenderTransferPeer } from "@/lib/use-sender-transfer-peer";
 import { useSenderTransferStream } from "@/lib/use-sender-transfer-stream";
@@ -61,6 +62,12 @@ export default function Home() {
   const senderTransferStream = useSenderTransferStream({
     connection: senderTransferPeer.connection,
     files: selectedFiles,
+  });
+
+  const senderTransferCompletion = useSenderTransferCompletion({
+    connection: senderTransferPeer.connection,
+    completedFiles: senderTransferStream.completedFiles,
+    totalFiles: session?.fileCount ?? 0,
   });
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -171,7 +178,8 @@ export default function Home() {
         current.remotePeerId &&
         current.status !== "ready" &&
         current.status !== "syncing_metadata" &&
-        current.status !== "transferring"
+        current.status !== "transferring" &&
+        current.status !== "completed"
       ) {
         return {
           ...current,
@@ -189,6 +197,29 @@ export default function Home() {
   ]);
 
   useEffect(() => {
+    if (senderTransferCompletion.status === "completed") {
+      setConnection((current) => ({
+        ...current,
+        status: "completed",
+        errorMessage: null,
+        progress: {
+          ...current.progress,
+          fileName: null,
+          totalBytesTransferred: current.progress.totalBytesTotal,
+        },
+      }));
+      return;
+    }
+
+    if (senderTransferCompletion.status === "failed") {
+      setConnection((current) => ({
+        ...current,
+        status: "failed",
+        errorMessage: senderTransferCompletion.errorMessage,
+      }));
+      return;
+    }
+
     if (senderTransferStream.status === "streaming") {
       setConnection((current) => ({
         ...current,
@@ -198,7 +229,8 @@ export default function Home() {
           ...current.progress,
           fileName: senderTransferStream.fileName,
           fileIndex: senderTransferStream.fileIndex,
-          totalFiles: senderTransferStream.totalFiles || current.progress.totalFiles,
+          totalFiles:
+            senderTransferStream.totalFiles || current.progress.totalFiles,
           fileBytesTransferred: senderTransferStream.bytesAcknowledged,
           fileBytesTotal: senderTransferStream.fileSize,
           totalBytesTransferred: senderTransferStream.totalBytesAcknowledged,
@@ -227,7 +259,8 @@ export default function Home() {
           ...current.progress,
           fileName: senderTransferStream.fileName,
           fileIndex: senderTransferStream.fileIndex,
-          totalFiles: senderTransferStream.totalFiles || current.progress.totalFiles,
+          totalFiles:
+            senderTransferStream.totalFiles || current.progress.totalFiles,
           fileBytesTransferred: senderTransferStream.bytesAcknowledged,
           fileBytesTotal: senderTransferStream.fileSize,
           totalBytesTransferred: senderTransferStream.totalBytesAcknowledged,
@@ -235,6 +268,8 @@ export default function Home() {
       }));
     }
   }, [
+    senderTransferCompletion.errorMessage,
+    senderTransferCompletion.status,
     senderTransferMetadata.status,
     senderTransferStream.bytesAcknowledged,
     senderTransferStream.errorMessage,
@@ -305,19 +340,21 @@ export default function Home() {
           localPeerId: senderPeerId,
           remotePeerId: nextSession.receiverPeerId,
           status:
-            current.status === "transferring"
-              ? "transferring"
-              : current.status === "ready"
-                ? "ready"
-                : current.status === "syncing_metadata"
-                  ? "syncing_metadata"
-                  : current.status === "connected"
-                    ? "connected"
-                    : current.status === "closed" && nextSession.receiverPeerId
-                      ? "closed"
-                      : nextSession.receiverPeerId
-                        ? "connecting"
-                        : "waiting_for_peer",
+            current.status === "completed"
+              ? "completed"
+              : current.status === "transferring"
+                ? "transferring"
+                : current.status === "ready"
+                  ? "ready"
+                  : current.status === "syncing_metadata"
+                    ? "syncing_metadata"
+                    : current.status === "connected"
+                      ? "connected"
+                      : current.status === "closed" && nextSession.receiverPeerId
+                        ? "closed"
+                        : nextSession.receiverPeerId
+                          ? "connecting"
+                          : "waiting_for_peer",
           errorMessage: null,
         }));
       } catch {
@@ -541,6 +578,11 @@ export default function Home() {
     !!senderPeerId &&
     session?.status !== "closed";
 
+  const shouldShowSenderStreamCard =
+    !!session &&
+    (senderTransferStream.status === "streaming" ||
+      senderTransferStream.completedFiles > 0);
+
   return (
     <PageShell>
       <section className="w-full rounded-3xl border border-zinc-800 bg-zinc-900/60 px-6 py-10 shadow-xl sm:px-10">
@@ -616,8 +658,7 @@ export default function Home() {
             />
           )}
 
-          {(session && senderTransferStream.status === "streaming") ||
-          senderTransferStream.completedFiles > 0 ? (
+          {shouldShowSenderStreamCard && (
             <div className="mt-6 w-full max-w-md rounded-2xl border border-blue-900/60 bg-blue-950/30 px-4 py-4 text-left">
               <p className="text-xs uppercase tracking-wide text-blue-400">
                 Sender stream
@@ -667,13 +708,37 @@ export default function Home() {
                   </span>
                 </div>
               </div>
-
-              <p className="mt-4 text-xs text-blue-200/80">
-                This commit adds sequential multi-file flow. Final done/completed
-                transition lands next.
-              </p>
             </div>
-          ) : null}
+          )}
+
+          {connection.status === "completed" && (
+            <div className="mt-6 w-full max-w-md rounded-2xl border border-emerald-900/60 bg-emerald-950/30 px-4 py-4 text-left">
+              <p className="text-xs uppercase tracking-wide text-emerald-400">
+                Transfer completed
+              </p>
+
+              <p className="mt-2 text-sm text-emerald-100">
+                All files were acknowledged and the transfer finished successfully.
+              </p>
+
+              <div className="mt-4 grid gap-3 text-sm">
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-emerald-200/70">Files completed</span>
+                  <span className="font-medium text-emerald-100">
+                    {senderTransferStream.completedFiles} / {session?.fileCount ?? 0}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-emerald-200/70">Total transferred</span>
+                  <span className="font-medium text-emerald-100">
+                    {formatBytes(connection.progress.totalBytesTransferred)} /{" "}
+                    {formatBytes(connection.progress.totalBytesTotal)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {session && senderTransferStream.status === "failed" && (
             <div className="mt-6 w-full max-w-md rounded-2xl border border-red-900/60 bg-red-950/40 px-4 py-4 text-left">

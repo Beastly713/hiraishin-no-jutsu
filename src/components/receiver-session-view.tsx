@@ -10,6 +10,7 @@ import { createTransferConnectionState } from "@/lib/transfer-connection";
 import { isTransferReadyToStart } from "@/lib/transfer-readiness";
 import { isValidSessionId } from "@/lib/session";
 import { useBrowserPeer } from "@/lib/use-browser-peer";
+import { useReceiverTransferCompletion } from "@/lib/use-receiver-transfer-completion";
 import { useReceiverTransferDownload } from "@/lib/use-receiver-transfer-download";
 import { useReceiverTransferMetadata } from "@/lib/use-receiver-transfer-metadata";
 import { useReceiverTransferPeer } from "@/lib/use-receiver-transfer-peer";
@@ -73,6 +74,12 @@ export function ReceiverSessionView({
     connection: receiverTransferPeer.connection,
     infoPayload: receiverTransferMetadata.infoPayload,
     completedFileCount: receiverTransferDownload.completedDownloads.length,
+  });
+
+  const receiverTransferCompletion = useReceiverTransferCompletion({
+    connection: receiverTransferPeer.connection,
+    completedFileCount: receiverTransferDownload.completedDownloads.length,
+    totalFiles: receiverTransferMetadata.infoPayload?.files.length ?? 0,
   });
 
   useEffect(() => {
@@ -245,9 +252,34 @@ export function ReceiverSessionView({
       status: "failed",
       errorMessage: receiverTransferSequence.errorMessage,
     }));
+  }, [receiverTransferSequence.errorMessage, receiverTransferSequence.status]);
+
+  useEffect(() => {
+    if (receiverTransferCompletion.status === "completed") {
+      setConnection((current) => ({
+        ...current,
+        status: "completed",
+        errorMessage: null,
+        progress: {
+          ...current.progress,
+          fileName: null,
+          fileBytesTransferred: current.progress.fileBytesTotal,
+          totalBytesTransferred: current.progress.totalBytesTotal,
+        },
+      }));
+      return;
+    }
+
+    if (receiverTransferCompletion.status === "failed") {
+      setConnection((current) => ({
+        ...current,
+        status: "failed",
+        errorMessage: receiverTransferCompletion.errorMessage,
+      }));
+    }
   }, [
-    receiverTransferSequence.errorMessage,
-    receiverTransferSequence.status,
+    receiverTransferCompletion.errorMessage,
+    receiverTransferCompletion.status,
   ]);
 
   useEffect(() => {
@@ -280,6 +312,7 @@ export function ReceiverSessionView({
           current.status === "connecting" ||
           current.status === "connected" ||
           current.status === "transferring" ||
+          current.status === "completed" ||
           current.status === "closed"
             ? current.status
             : "resolving_session",
@@ -375,15 +408,17 @@ export function ReceiverSessionView({
           localPeerId: receiverPeerId,
           remotePeerId: nextSession.senderPeerId,
           status:
-            current.status === "transferring"
-              ? "transferring"
-              : current.status === "ready"
-                ? "ready"
-                : current.status === "syncing_metadata"
-                  ? "syncing_metadata"
-                  : current.status === "connected"
-                    ? "connected"
-                    : "connecting",
+            current.status === "completed"
+              ? "completed"
+              : current.status === "transferring"
+                ? "transferring"
+                : current.status === "ready"
+                  ? "ready"
+                  : current.status === "syncing_metadata"
+                    ? "syncing_metadata"
+                    : current.status === "connected"
+                      ? "connected"
+                      : "connecting",
           errorMessage: null,
         }));
       } catch (error) {
@@ -569,13 +604,36 @@ export function ReceiverSessionView({
                   Requested next file: {receiverTransferSequence.requestedFileName}
                 </p>
               )}
+          </div>
+        )}
 
-            {receiverTransferSequence.status === "complete" && (
-              <p className="mt-4 text-xs text-blue-200/80">
-                All files have been received locally. Final done/completed wiring
-                lands in the next commit.
-              </p>
-            )}
+        {connection.status === "completed" && (
+          <div className="rounded-2xl border border-emerald-900/60 bg-emerald-950/30 px-4 py-4">
+            <p className="text-xs uppercase tracking-wide text-emerald-400">
+              Transfer completed
+            </p>
+
+            <p className="mt-2 text-sm text-emerald-100">
+              All files were received and the transfer finished successfully.
+            </p>
+
+            <div className="mt-4 grid gap-3 text-sm">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-emerald-200/70">Files completed</span>
+                <span className="font-medium text-emerald-100">
+                  {receiverTransferDownload.completedDownloads.length} /{" "}
+                  {receiverTransferMetadata.infoPayload?.files.length ?? 0}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-emerald-200/70">Total received</span>
+                <span className="font-medium text-emerald-100">
+                  {formatBytes(connection.progress.totalBytesTransferred)} /{" "}
+                  {formatBytes(connection.progress.totalBytesTotal)}
+                </span>
+              </div>
+            </div>
           </div>
         )}
 
@@ -633,8 +691,8 @@ export function ReceiverSessionView({
             </p>
 
             <p className="mt-2 text-sm text-zinc-200">
-              {receiverTransferSequence.status === "complete"
-                ? "All files were received locally. The final done/completed transition is the last remaining phase-3 step."
+              {connection.status === "completed"
+                ? "The transfer has completed successfully."
                 : receiverTransferSequence.status === "waiting"
                   ? `The receiver has requested the next file: ${receiverTransferSequence.requestedFileName}.`
                   : receiverTransferDownload.status === "downloading"
