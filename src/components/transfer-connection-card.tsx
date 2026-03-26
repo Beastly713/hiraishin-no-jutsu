@@ -15,11 +15,11 @@ function getConnectionHint(connection: TransferConnectionState) {
     case "connecting":
       return "The receiver is attempting to open the live PeerJS data channel.";
     case "connected":
-      return "The browser-to-browser data channel is open. Metadata exchange is next.";
+      return "The browser-to-browser data channel is open. The first metadata handshake is next.";
     case "syncing_metadata":
-      return "Transport is live and transfer metadata is being exchanged.";
+      return "The receiver has requested transfer info and the sender is responding with file metadata.";
     case "ready":
-      return "Peer transport and metadata exchange are ready for transfer.";
+      return "The live channel and initial metadata handshake are complete. Transfer start can be wired next.";
     default:
       return "Peer transport is not connected yet. Upcoming commits will wire this state to the real browser-to-browser flow.";
   }

@@ -11,6 +11,7 @@ import { useBrowserPeer } from "@/lib/use-browser-peer";
 import { useReceiverTransferPeer } from "@/lib/use-receiver-transfer-peer";
 import { TransferSession } from "@/types/session";
 import { TransferConnectionState } from "@/types/transfer-connection";
+import { useReceiverTransferMetadata } from "@/lib/use-receiver-transfer-metadata";
 
 type ReceiverSessionViewProps = {
   sessionId: string;
@@ -46,6 +47,10 @@ export function ReceiverSessionView({
       !!session &&
       session.status !== "closed" &&
       session.receiverPeerId === receiverPeerId,
+  });
+
+  const receiverTransferMetadata = useReceiverTransferMetadata({
+  connection: receiverTransferPeer.connection,
   });
 
   useEffect(() => {
@@ -111,6 +116,56 @@ export function ReceiverSessionView({
     receiverTransferPeer.status,
   ]);
 
+    useEffect(() => {
+    setConnection((current) => {
+      if (receiverTransferMetadata.status === "syncing") {
+        return {
+          ...current,
+          status: "syncing_metadata",
+          deviceInfo: receiverTransferMetadata.deviceInfo,
+          errorMessage: null,
+        };
+      }
+
+      if (receiverTransferMetadata.status === "ready") {
+        const totalBytesTotal =
+          receiverTransferMetadata.infoPayload?.files.reduce(
+            (sum, file) => sum + file.size,
+            0,
+          ) ?? current.progress.totalBytesTotal;
+
+        return {
+          ...current,
+          status: "ready",
+          deviceInfo: receiverTransferMetadata.deviceInfo,
+          errorMessage: null,
+          progress: {
+            ...current.progress,
+            totalFiles:
+              receiverTransferMetadata.infoPayload?.files.length ??
+              current.progress.totalFiles,
+            totalBytesTotal,
+          },
+        };
+      }
+
+      if (receiverTransferMetadata.status === "failed") {
+        return {
+          ...current,
+          status: "failed",
+          errorMessage: receiverTransferMetadata.errorMessage,
+        };
+      }
+
+      return current;
+    });
+  }, [
+    receiverTransferMetadata.deviceInfo,
+    receiverTransferMetadata.errorMessage,
+    receiverTransferMetadata.infoPayload,
+    receiverTransferMetadata.status,
+  ]);
+
   useEffect(() => {
     if (!isValidId) {
       setSession(null);
@@ -135,11 +190,13 @@ export function ReceiverSessionView({
     async function loadSession() {
       setConnection((current) => ({
         ...current,
-        status:
-          current.status === "connecting" ||
-          current.status === "connected"
-            ? current.status
-            : "resolving_session",
+          status:
+            current.status === "ready" ||
+            current.status === "syncing_metadata" ||
+            current.status === "connecting" ||
+            current.status === "connected"
+              ? current.status
+              : "resolving_session",
         localPeerId: receiverPeerId,
         errorMessage: null,
       }));
@@ -232,7 +289,13 @@ export function ReceiverSessionView({
           localPeerId: receiverPeerId,
           remotePeerId: nextSession.senderPeerId,
           status:
-            current.status === "connected" ? "connected" : "connecting",
+            current.status === "ready"
+              ? "ready"
+              : current.status === "syncing_metadata"
+                ? "syncing_metadata"
+                : current.status === "connected"
+                  ? "connected"
+                  : "connecting",
           errorMessage: null,
         }));
       } catch (error) {
@@ -306,11 +369,15 @@ export function ReceiverSessionView({
               Session status
             </p>
             <p className="mt-2 text-sm text-zinc-200">
-              {connection.status === "connected"
-                ? "Receiver is connected to the sender. Metadata exchange is next."
-                : session.receiverPeerId
-                  ? "Receiver joined. Opening live browser-to-browser connection..."
-                  : "Joining receiver to session..."}
+                {connection.status === "ready"
+                  ? "Transfer metadata is synced. The connection is ready for the first transfer actions."
+                  : connection.status === "syncing_metadata"
+                    ? "Live connection is open. Requesting transfer metadata from the sender..."
+                    : connection.status === "connected"
+                      ? "Receiver is connected to the sender. Metadata exchange is next."
+                      : session.receiverPeerId
+                        ? "Receiver joined. Opening live browser-to-browser connection..."
+                        : "Joining receiver to session..."}
             </p>
             <p className="mt-1 text-xs text-zinc-400">
               Session availability is checked every 5 seconds.

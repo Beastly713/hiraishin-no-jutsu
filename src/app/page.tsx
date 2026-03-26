@@ -16,6 +16,7 @@ import {
   TransferSession,
 } from "@/types/session";
 import { TransferConnectionState } from "@/types/transfer-connection";
+import { useSenderTransferMetadata } from "@/lib/use-sender-transfer-metadata";
 
 const SESSION_TOUCH_INTERVAL_MS = 30000;
 
@@ -47,6 +48,10 @@ export default function Home() {
     peer: browserPeer.peer,
     sessionId: session?.status === "closed" ? null : session?.id ?? null,
   });
+    const senderTransferMetadata = useSenderTransferMetadata({
+    connection: senderTransferPeer.connection,
+    files: session?.files ?? [],
+  });
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -63,6 +68,57 @@ export default function Home() {
       errorMessage: browserPeer.errorMessage,
     }));
   }, [browserPeer.errorMessage, browserPeer.status, senderPeerId]);
+
+  useEffect(() => {
+    setConnection((current) => {
+      if (senderTransferMetadata.status === "syncing") {
+        return {
+          ...current,
+          status: "syncing_metadata",
+          deviceInfo: senderTransferMetadata.deviceInfo,
+          errorMessage: null,
+          progress: session
+            ? {
+                ...current.progress,
+                totalFiles: session.fileCount,
+                totalBytesTotal: session.totalSize,
+              }
+            : current.progress,
+        };
+      }
+
+      if (senderTransferMetadata.status === "ready") {
+        return {
+          ...current,
+          status: "ready",
+          deviceInfo: senderTransferMetadata.deviceInfo,
+          errorMessage: null,
+          progress: session
+            ? {
+                ...current.progress,
+                totalFiles: session.fileCount,
+                totalBytesTotal: session.totalSize,
+              }
+            : current.progress,
+        };
+      }
+
+      if (senderTransferMetadata.status === "failed") {
+        return {
+          ...current,
+          status: "failed",
+          errorMessage: senderTransferMetadata.errorMessage,
+        };
+      }
+
+      return current;
+    });
+  }, [
+    senderTransferMetadata.deviceInfo,
+    senderTransferMetadata.errorMessage,
+    senderTransferMetadata.status,
+    session,
+  ]);
 
   useEffect(() => {
     setConnection((current) => {
@@ -173,11 +229,15 @@ export default function Home() {
           localPeerId: senderPeerId,
           remotePeerId: nextSession.receiverPeerId,
           status:
-            current.status === "connected"
-              ? "connected"
-              : nextSession.receiverPeerId
-                ? "connecting"
-                : "waiting_for_peer",
+            current.status === "ready"
+              ? "ready"
+              : current.status === "syncing_metadata"
+              ? "syncing_metadata"
+              : current.status === "connected"
+                ? "connected"
+                : nextSession.receiverPeerId
+                  ? "connecting"
+                  : "waiting_for_peer",
           errorMessage: null,
         }));
       } catch {
