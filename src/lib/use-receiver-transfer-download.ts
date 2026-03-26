@@ -12,7 +12,7 @@ import {
   isTransferErrorMessage,
   isTransferStartMessage,
 } from "@/lib/transfer-protocol";
-import { TransferInfoPayload } from "@/types/transfer";
+import { TransferChunkBytes, TransferInfoPayload } from "@/types/transfer";
 
 type CompletedReceiverDownload = {
   fileName: string;
@@ -60,6 +60,17 @@ function findFileIndex(infoPayload: TransferInfoPayload, fileName: string) {
   return infoPayload.files.findIndex((file) => file.name === fileName);
 }
 
+function normalizeChunkBytes(bytes: TransferChunkBytes): ArrayBuffer {
+  if (bytes instanceof ArrayBuffer) {
+    return bytes;
+  }
+
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
+}
+
 export function useReceiverTransferDownload({
   connection,
   infoPayload,
@@ -71,6 +82,7 @@ export function useReceiverTransferDownload({
   const currentFileNameRef = useRef<string | null>(null);
   const currentFileBytesRef = useRef(0);
   const completedBytesRef = useRef(0);
+  const completedDownloadsRef = useRef<CompletedReceiverDownload[]>([]);
   const downloadUrlsRef = useRef<string[]>([]);
 
   const totalBytesTotal = useMemo(() => {
@@ -85,6 +97,7 @@ export function useReceiverTransferDownload({
       currentFileNameRef.current = null;
       currentFileBytesRef.current = 0;
       completedBytesRef.current = 0;
+      completedDownloadsRef.current = [];
       setSnapshot(INITIAL_STATE);
       return;
     }
@@ -175,7 +188,7 @@ export function useReceiverTransferDownload({
         return;
       }
 
-      const chunkBytes = value.payload.bytes;
+      const chunkBytes = normalizeChunkBytes(value.payload.bytes);
       const nextFileBytesReceived =
         currentFileBytesRef.current + chunkBytes.byteLength;
 
@@ -203,7 +216,7 @@ export function useReceiverTransferDownload({
         totalBytesTotal,
         downloadUrl: null,
         lastAcknowledgedOffset: nextFileBytesReceived,
-        completedDownloads: snapshot.completedDownloads,
+        completedDownloads: completedDownloadsRef.current,
         errorMessage: null,
       };
 
@@ -221,7 +234,7 @@ export function useReceiverTransferDownload({
         downloadUrlsRef.current.push(downloadUrl);
 
         const completedDownloads = [
-          ...snapshot.completedDownloads,
+          ...completedDownloadsRef.current,
           {
             fileName: fileInfo.name,
             fileIndex: fileIndex + 1,
@@ -230,6 +243,7 @@ export function useReceiverTransferDownload({
           },
         ];
 
+        completedDownloadsRef.current = completedDownloads;
         completedBytesRef.current = nextTotalBytesReceived;
 
         setSnapshot({
@@ -274,8 +288,9 @@ export function useReceiverTransferDownload({
       currentFileNameRef.current = null;
       currentFileBytesRef.current = 0;
       completedBytesRef.current = 0;
+      completedDownloadsRef.current = [];
     };
-  }, [connection, infoPayload, snapshot.completedDownloads, totalBytesTotal]);
+  }, [connection, infoPayload, totalBytesTotal]);
 
   return snapshot;
 }

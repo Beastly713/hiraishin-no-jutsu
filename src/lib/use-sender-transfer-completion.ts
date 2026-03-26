@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DataConnection } from "peerjs";
 import {
-  createErrorMessage,
   isTransferDoneMessage,
   isTransferErrorMessage,
 } from "@/lib/transfer-protocol";
@@ -32,25 +31,44 @@ export function useSenderTransferCompletion({
   const [snapshot, setSnapshot] =
     useState<SenderTransferCompletionSnapshot>(INITIAL_STATE);
 
+  const completedFilesRef = useRef(completedFiles);
+  const totalFilesRef = useRef(totalFiles);
+  const hasReceivedDoneRef = useRef(false);
+
+  useEffect(() => {
+    completedFilesRef.current = completedFiles;
+    totalFilesRef.current = totalFiles;
+
+    if (
+      hasReceivedDoneRef.current &&
+      totalFiles > 0 &&
+      completedFiles === totalFiles
+    ) {
+      setSnapshot({
+        status: "completed",
+        errorMessage: null,
+      });
+    }
+  }, [completedFiles, totalFiles]);
+
   useEffect(() => {
     if (!connection) {
+      hasReceivedDoneRef.current = false;
       setSnapshot(INITIAL_STATE);
       return;
     }
 
-    const failTransfer = (message: string) => {
-      try {
-        connection.send(createErrorMessage(message));
-      } catch {
-        // Best effort only.
+    const tryComplete = () => {
+      if (
+        hasReceivedDoneRef.current &&
+        totalFilesRef.current > 0 &&
+        completedFilesRef.current === totalFilesRef.current
+      ) {
+        setSnapshot({
+          status: "completed",
+          errorMessage: null,
+        });
       }
-
-      setSnapshot({
-        status: "failed",
-        errorMessage: message,
-      });
-
-      connection.close();
     };
 
     const handleData = (value: unknown) => {
@@ -59,6 +77,7 @@ export function useSenderTransferCompletion({
           status: "failed",
           errorMessage: value.payload.message,
         });
+
         connection.close();
         return;
       }
@@ -67,17 +86,8 @@ export function useSenderTransferCompletion({
         return;
       }
 
-      if (totalFiles === 0 || completedFiles !== totalFiles) {
-        failTransfer(
-          "Received transfer completion before all files were acknowledged.",
-        );
-        return;
-      }
-
-      setSnapshot({
-        status: "completed",
-        errorMessage: null,
-      });
+      hasReceivedDoneRef.current = true;
+      tryComplete();
     };
 
     const handleError = (error: Error) => {
@@ -94,7 +104,7 @@ export function useSenderTransferCompletion({
       connection.off("data", handleData);
       connection.off("error", handleError);
     };
-  }, [completedFiles, connection, totalFiles]);
+  }, [connection]);
 
   return snapshot;
 }

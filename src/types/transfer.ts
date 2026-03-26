@@ -20,10 +20,12 @@ export type TransferStartPayload = {
   offset: number;
 };
 
+export type TransferChunkBytes = ArrayBuffer | Uint8Array;
+
 export type TransferChunkPayload = {
   fileName: string;
   offset: number;
-  bytes: ArrayBuffer;
+  bytes: TransferChunkBytes;
   final: boolean;
 };
 

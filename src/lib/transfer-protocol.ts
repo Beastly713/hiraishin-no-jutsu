@@ -149,6 +149,10 @@ export function isTransferStartMessage(
   );
 }
 
+function isBinaryChunkPayload(value: unknown) {
+  return value instanceof ArrayBuffer || value instanceof Uint8Array;
+}
+
 export function isTransferChunkMessage(
   value: unknown,
 ): value is TransferChunkMessage {
@@ -174,7 +178,7 @@ export function isTransferChunkMessage(
     typeof payload.offset === "number" &&
     Number.isFinite(payload.offset) &&
     payload.offset >= 0 &&
-    payload.bytes instanceof ArrayBuffer &&
+    isBinaryChunkPayload(payload.bytes) &&
     typeof payload.final === "boolean"
   );
 }

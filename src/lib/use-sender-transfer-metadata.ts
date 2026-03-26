@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { DataConnection } from "peerjs";
 import {
   createErrorMessage,
   createInfoMessage,
-  getUnexpectedHandshakeMessageError,
   isTransferChunkAckMessage,
+  isTransferChunkMessage,
   isTransferDoneMessage,
   isTransferErrorMessage,
   isTransferRequestInfoMessage,
@@ -39,33 +39,11 @@ export function useSenderTransferMetadata({
   const [snapshot, setSnapshot] =
     useState<SenderTransferMetadataSnapshot>(INITIAL_STATE);
 
-  const snapshotRef = useRef(snapshot);
-
-  useEffect(() => {
-    snapshotRef.current = snapshot;
-  }, [snapshot]);
-
   useEffect(() => {
     if (!connection) {
       setSnapshot(INITIAL_STATE);
       return;
     }
-
-    const failHandshake = (message: string) => {
-      try {
-        connection.send(createErrorMessage(message));
-      } catch {
-        // Best effort only.
-      }
-
-      setSnapshot({
-        status: "failed",
-        deviceInfo: null,
-        errorMessage: message,
-      });
-
-      connection.close();
-    };
 
     const handleData = (value: unknown) => {
       if (isTransferErrorMessage(value)) {
@@ -74,34 +52,45 @@ export function useSenderTransferMetadata({
           deviceInfo: null,
           errorMessage: value.payload.message,
         });
+
         connection.close();
         return;
       }
 
-      const hasCompletedHandshake = snapshotRef.current.status === "ready";
-
       if (
-        hasCompletedHandshake &&
-        (isTransferStartMessage(value) ||
-          isTransferChunkAckMessage(value) ||
-          isTransferDoneMessage(value))
+        isTransferStartMessage(value) ||
+        isTransferChunkMessage(value) ||
+        isTransferChunkAckMessage(value) ||
+        isTransferDoneMessage(value)
       ) {
         return;
       }
 
       if (!isTransferRequestInfoMessage(value)) {
-        failHandshake(getUnexpectedHandshakeMessageError(value, "request_info"));
+        try {
+          connection.send(
+            createErrorMessage(
+              'Unexpected handshake message. Expected "request_info".',
+            ),
+          );
+        } catch {
+          // Best effort only.
+        }
+
+        setSnapshot({
+          status: "failed",
+          deviceInfo: null,
+          errorMessage: 'Unexpected handshake message. Expected "request_info".',
+        });
+
+        connection.close();
         return;
       }
 
       try {
         connection.send(
           createInfoMessage({
-            files: files.map((file) => ({
-              name: file.name,
-              size: file.size,
-              type: file.type,
-            })),
+            files,
           }),
         );
 
@@ -113,21 +102,15 @@ export function useSenderTransferMetadata({
       } catch (error) {
         setSnapshot({
           status: "failed",
-          deviceInfo: value.payload,
+          deviceInfo: null,
           errorMessage:
             error instanceof Error
               ? error.message
               : "Failed to send transfer metadata.",
         });
-      }
-    };
 
-    const handleOpen = () => {
-      setSnapshot({
-        status: "syncing",
-        deviceInfo: null,
-        errorMessage: null,
-      });
+        connection.close();
+      }
     };
 
     const handleError = (error: Error) => {
@@ -138,12 +121,10 @@ export function useSenderTransferMetadata({
       }));
     };
 
-    connection.on("open", handleOpen);
     connection.on("data", handleData);
     connection.on("error", handleError);
 
     return () => {
-      connection.off("open", handleOpen);
       connection.off("data", handleData);
       connection.off("error", handleError);
     };

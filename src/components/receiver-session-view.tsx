@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { SessionFileList } from "@/components/session-file-list";
 import { TransferConnectionCard } from "@/components/transfer-connection-card";
@@ -30,10 +30,13 @@ export function ReceiverSessionView({
 }: ReceiverSessionViewProps) {
   const browserPeer = useBrowserPeer();
   const receiverPeerId = browserPeer.peerId;
+
   const [session, setSession] = useState<TransferSession | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [retryNonce, setRetryNonce] = useState(0);
   const [transportRetryNonce, setTransportRetryNonce] = useState(0);
+  const lastAutoDownloadedUrlRef = useRef<string | null>(null);
+
   const [connection, setConnection] = useState<TransferConnectionState>(() =>
     createTransferConnectionState({
       role: "receiver",
@@ -103,7 +106,13 @@ export function ReceiverSessionView({
         return {
           ...current,
           remotePeerId: receiverTransferPeer.remotePeerId,
-          status: "connecting",
+          status:
+            current.status === "ready" ||
+            current.status === "syncing_metadata" ||
+            current.status === "transferring" ||
+            current.status === "completed"
+              ? current.status
+              : "connecting",
           errorMessage: null,
         };
       }
@@ -112,7 +121,13 @@ export function ReceiverSessionView({
         return {
           ...current,
           remotePeerId: receiverTransferPeer.remotePeerId,
-          status: "connected",
+          status:
+            current.status === "ready" ||
+            current.status === "syncing_metadata" ||
+            current.status === "transferring" ||
+            current.status === "completed"
+              ? current.status
+              : "connected",
           errorMessage: null,
         };
       }
@@ -325,7 +340,6 @@ export function ReceiverSessionView({
           method: "GET",
           cache: "no-store",
         });
-
         const data: unknown = await response.json();
 
         if (!response.ok) {
@@ -336,7 +350,6 @@ export function ReceiverSessionView({
             typeof data.error === "string"
               ? data.error
               : "Failed to load transfer session.";
-
           throw new Error(errorMessage);
         }
 
@@ -370,7 +383,6 @@ export function ReceiverSessionView({
               receiverPeerId,
             }),
           });
-
           const joinData: unknown = await joinResponse.json();
 
           if (!joinResponse.ok) {
@@ -381,7 +393,6 @@ export function ReceiverSessionView({
               typeof joinData.error === "string"
                 ? joinData.error
                 : "Failed to join transfer session.";
-
             throw new Error(errorMessage);
           }
 
@@ -458,6 +469,31 @@ export function ReceiverSessionView({
     };
   }, [isValidId, receiverPeerId, retryNonce, sessionId]);
 
+  useEffect(() => {
+    const latestDownload =
+      receiverTransferDownload.completedDownloads[
+        receiverTransferDownload.completedDownloads.length - 1
+      ];
+
+    if (!latestDownload) {
+      return;
+    }
+
+    if (lastAutoDownloadedUrlRef.current === latestDownload.downloadUrl) {
+      return;
+    }
+
+    lastAutoDownloadedUrlRef.current = latestDownload.downloadUrl;
+
+    const anchor = document.createElement("a");
+    anchor.href = latestDownload.downloadUrl;
+    anchor.download = latestDownload.fileName;
+    anchor.rel = "noopener";
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+  }, [receiverTransferDownload.completedDownloads]);
+
   const handleRetryLookup = () => {
     setRetryNonce((current) => current + 1);
   };
@@ -467,6 +503,11 @@ export function ReceiverSessionView({
   };
 
   const isRetrying = connection.status === "resolving_session";
+  const canShowStartCard =
+    connection.status === "ready" ||
+    (receiverTransferMetadata.status === "ready" &&
+      receiverTransferStart.status !== "started" &&
+      receiverTransferDownload.completedDownloads.length === 0);
 
   return (
     <div className="w-full max-w-2xl rounded-3xl border border-zinc-800 bg-zinc-900/60 p-8 shadow-xl">
@@ -510,7 +551,7 @@ export function ReceiverSessionView({
           />
         )}
 
-        {connection.status === "ready" && (
+        {canShowStartCard && (
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
             <p className="text-xs uppercase tracking-wide text-zinc-500">
               Transfer start
@@ -535,41 +576,49 @@ export function ReceiverSessionView({
               </div>
             )}
 
-            <div className="mt-4">
+            <div className="mt-4 flex flex-wrap gap-3">
               <button
                 type="button"
                 onClick={receiverTransferStart.startTransfer}
                 disabled={!receiverTransferStart.canStart}
-                className="inline-flex items-center rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition disabled:cursor-not-allowed disabled:border-zinc-800 disabled:text-zinc-500 enabled:hover:border-zinc-500 enabled:hover:bg-zinc-900"
+                className="inline-flex items-center rounded-full bg-zinc-100 px-5 py-3 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
               >
                 {receiverTransferStart.status === "starting"
                   ? "Starting..."
                   : receiverTransferStart.status === "started"
-                    ? "Transfer requested"
-                    : "Start transfer"}
+                    ? "Download requested"
+                    : "Start download"}
               </button>
+
+              {receiverTransferMetadata.infoPayload?.files[0] && (
+                <span className="inline-flex items-center rounded-full border border-zinc-800 px-4 py-3 text-xs text-zinc-400">
+                  First file: {receiverTransferMetadata.infoPayload.files[0].name}
+                </span>
+              )}
             </div>
           </div>
         )}
 
-        {(receiverTransferDownload.status === "downloading" ||
-          receiverTransferDownload.status === "file_ready") && (
+        {(connection.status === "transferring" ||
+          receiverTransferDownload.completedDownloads.length > 0) && (
           <div className="rounded-2xl border border-blue-900/60 bg-blue-950/30 px-4 py-4">
             <p className="text-xs uppercase tracking-wide text-blue-400">
-              Receiver download
+              Download progress
             </p>
 
             <p className="mt-2 text-sm text-blue-100">
-              {receiverTransferDownload.status === "file_ready"
-                ? "The current file has been fully received."
-                : "Receiving real file chunks over the live peer channel."}
+              {receiverTransferDownload.status === "downloading"
+                ? `Receiving ${receiverTransferDownload.fileName}...`
+                : receiverTransferDownload.status === "file_ready"
+                  ? `${receiverTransferDownload.fileName} is ready.`
+                  : "Waiting for the next file in the sequence."}
             </p>
 
             <div className="mt-4 grid gap-3 text-sm">
               <div className="flex items-center justify-between gap-4">
-                <span className="text-blue-200/70">File</span>
+                <span className="text-blue-200/70">Current file</span>
                 <span className="font-medium text-blue-100">
-                  {receiverTransferDownload.fileName ?? "Waiting..."}
+                  {receiverTransferDownload.fileName ?? "Waiting"}
                 </span>
               </div>
 
@@ -590,20 +639,52 @@ export function ReceiverSessionView({
               </div>
 
               <div className="flex items-center justify-between gap-4">
-                <span className="text-blue-200/70">File index</span>
+                <span className="text-blue-200/70">Completed downloads</span>
                 <span className="font-medium text-blue-100">
-                  {receiverTransferDownload.fileIndex} /{" "}
+                  {receiverTransferDownload.completedDownloads.length} /{" "}
                   {receiverTransferDownload.totalFiles}
                 </span>
               </div>
             </div>
+          </div>
+        )}
 
-            {receiverTransferSequence.status === "waiting" &&
-              receiverTransferSequence.requestedFileName && (
-                <p className="mt-4 text-xs text-blue-200/80">
-                  Requested next file: {receiverTransferSequence.requestedFileName}
-                </p>
-              )}
+        {receiverTransferDownload.completedDownloads.length > 0 && (
+          <div className="rounded-2xl border border-emerald-900/60 bg-emerald-950/30 px-4 py-4">
+            <p className="text-xs uppercase tracking-wide text-emerald-400">
+              Completed downloads
+            </p>
+
+            <p className="mt-2 text-sm text-emerald-100">
+              Each completed file is available below. The browser is also asked
+              to start the download automatically when a file finishes.
+            </p>
+
+            <div className="mt-4 space-y-3">
+              {receiverTransferDownload.completedDownloads.map((download) => (
+                <div
+                  key={`${download.fileIndex}-${download.fileName}`}
+                  className="flex flex-col gap-3 rounded-xl border border-emerald-900/40 bg-zinc-950/70 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-emerald-100">
+                      {download.fileName}
+                    </p>
+                    <p className="mt-1 text-xs text-emerald-200/70">
+                      {formatBytes(download.fileSize)}
+                    </p>
+                  </div>
+
+                  <a
+                    href={download.downloadUrl}
+                    download={download.fileName}
+                    className="inline-flex items-center justify-center rounded-full border border-emerald-700 px-4 py-2 text-sm font-medium text-emerald-100 transition hover:bg-emerald-900/30"
+                  >
+                    Download again
+                  </a>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -614,156 +695,20 @@ export function ReceiverSessionView({
             </p>
 
             <p className="mt-2 text-sm text-emerald-100">
-              All files were received and the transfer finished successfully.
+              All files were received and the sender reported the transfer as
+              finished.
             </p>
-
-            <div className="mt-4 grid gap-3 text-sm">
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-emerald-200/70">Files completed</span>
-                <span className="font-medium text-emerald-100">
-                  {receiverTransferDownload.completedDownloads.length} /{" "}
-                  {receiverTransferMetadata.infoPayload?.files.length ?? 0}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-emerald-200/70">Total received</span>
-                <span className="font-medium text-emerald-100">
-                  {formatBytes(connection.progress.totalBytesTransferred)} /{" "}
-                  {formatBytes(connection.progress.totalBytesTotal)}
-                </span>
-              </div>
-            </div>
           </div>
         )}
 
-        {receiverTransferDownload.completedDownloads.length > 0 && (
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
-            <p className="text-xs uppercase tracking-wide text-zinc-500">
-              Received files
-            </p>
-
-            <div className="mt-4 grid gap-3">
-              {receiverTransferDownload.completedDownloads.map((download) => (
-                <div
-                  key={`${download.fileIndex}-${download.fileName}`}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-800 px-4 py-3"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-zinc-100">
-                      {download.fileName}
-                    </p>
-                    <p className="text-xs text-zinc-400">
-                      File {download.fileIndex} · {formatBytes(download.fileSize)}
-                    </p>
-                  </div>
-
-                  <a
-                    href={download.downloadUrl}
-                    download={download.fileName}
-                    className="inline-flex items-center rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-900"
-                  >
-                    Download
-                  </a>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {receiverTransferDownload.status === "failed" && (
+        {connection.status === "failed" && (
           <div className="rounded-2xl border border-red-900/60 bg-red-950/40 px-4 py-4">
             <p className="text-xs uppercase tracking-wide text-red-400">
-              Receiver download
-            </p>
-
-            <p className="mt-2 text-sm text-red-100">
-              {receiverTransferDownload.errorMessage ??
-                "Receiver-side transfer failed."}
-            </p>
-          </div>
-        )}
-
-        {session && !isClosedSession && (
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
-            <p className="text-xs uppercase tracking-wide text-zinc-500">
-              Session status
-            </p>
-
-            <p className="mt-2 text-sm text-zinc-200">
-              {connection.status === "completed"
-                ? "The transfer has completed successfully."
-                : receiverTransferSequence.status === "waiting"
-                  ? `The receiver has requested the next file: ${receiverTransferSequence.requestedFileName}.`
-                  : receiverTransferDownload.status === "downloading"
-                    ? "The receiver is consuming live file chunks from the sender."
-                    : receiverTransferDownload.status === "file_ready"
-                      ? "The receiver finished one file and is progressing through the remaining queued files."
-                      : receiverTransferStart.status === "started"
-                        ? "The receiver has sent the first transfer-start request. Waiting for sender-side chunks."
-                        : connection.status === "ready"
-                          ? "Transfer metadata is synced. The connection is ready for the first transfer actions."
-                          : connection.status === "syncing_metadata"
-                            ? "Live connection is open. Requesting transfer metadata from the sender..."
-                            : connection.status === "connected"
-                              ? "Receiver is connected to the sender. Metadata exchange is next."
-                              : connection.status === "closed"
-                                ? "The live browser-to-browser channel was closed. You can try reconnecting while the session remains active."
-                                : session.receiverPeerId
-                                  ? "Receiver joined. Opening live browser-to-browser connection..."
-                                  : "Joining receiver to session..."}
-            </p>
-
-            <p className="mt-1 text-xs text-zinc-400">
-              Session availability is checked every 5 seconds.
-            </p>
-          </div>
-        )}
-
-        {session &&
-          !isClosedSession &&
-          (connection.status === "closed" || connection.status === "failed") && (
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
-              <p className="text-xs uppercase tracking-wide text-zinc-500">
-                Live channel
-              </p>
-
-              <p className="mt-2 text-sm text-zinc-200">
-                {connection.status === "failed"
-                  ? "The peer channel failed before transfer completed."
-                  : "The peer channel closed before transfer completed."}
-              </p>
-
-              <p className="mt-1 text-xs text-zinc-400">
-                The session is still active, so you can retry the live browser
-                connection without creating a new link.
-              </p>
-
-              <div className="mt-4">
-                <button
-                  type="button"
-                  onClick={handleRetryTransport}
-                  className="inline-flex items-center rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-900"
-                >
-                  Reconnect channel
-                </button>
-              </div>
-            </div>
-          )}
-
-        {isClosedSession && session && (
-          <div className="rounded-2xl border border-amber-900/60 bg-amber-950/40 px-4 py-4">
-            <p className="text-xs uppercase tracking-wide text-amber-400">
               Status
             </p>
 
-            <p className="mt-2 text-sm text-amber-100">
-              This transfer session is closed.
-            </p>
-
-            <p className="mt-1 text-xs text-amber-200/80">
-              The sender is no longer keeping this link active, so the transfer
-              cannot continue from this page.
+            <p className="mt-2 text-sm text-red-100">
+              {connection.errorMessage ?? lookupError ?? "Transfer failed."}
             </p>
 
             <div className="mt-4 flex flex-wrap gap-3">
@@ -771,112 +716,99 @@ export function ReceiverSessionView({
                 type="button"
                 onClick={handleRetryLookup}
                 disabled={isRetrying}
-                className="inline-flex items-center rounded-full border border-amber-800 px-4 py-2 text-sm font-medium text-amber-100 transition disabled:cursor-not-allowed disabled:opacity-60 enabled:hover:bg-amber-900/30"
+                className="inline-flex items-center rounded-full border border-red-700 px-4 py-2 text-sm font-medium text-red-100 transition hover:bg-red-950/60 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isRetrying ? "Checking..." : "Check again"}
+                {isRetrying ? "Retrying..." : "Retry now"}
               </button>
 
-              <Link
-                href="/"
-                className="inline-flex items-center rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-950"
+              <button
+                type="button"
+                onClick={handleRetryTransport}
+                className="inline-flex items-center rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-900"
               >
-                Back to sender page
-              </Link>
+                Retry live connection
+              </button>
             </div>
           </div>
         )}
 
-        {lookupError && (
-          <div className="rounded-2xl border border-red-900/60 bg-red-950/40 px-4 py-4">
-            <p className="text-xs uppercase tracking-wide text-red-400">
-              Status
+        {isClosedSession && (
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
+            <p className="text-xs uppercase tracking-wide text-zinc-500">
+              Session closed
             </p>
 
-            <p className="mt-2 text-sm text-red-100">{lookupError}</p>
-
-            <p className="mt-1 text-xs text-red-200/80">
-              The link may be expired, invalid, or no longer available.
+            <p className="mt-2 text-sm text-zinc-300">
+              This transfer session is no longer available.
             </p>
 
-            {isValidId && (
-              <div className="mt-4">
-                <button
-                  type="button"
-                  onClick={handleRetryLookup}
-                  disabled={isRetrying}
-                  className="inline-flex items-center rounded-full border border-red-800 px-4 py-2 text-sm font-medium text-red-100 transition disabled:cursor-not-allowed disabled:opacity-60 enabled:hover:bg-red-900/30"
-                >
-                  {isRetrying ? "Retrying..." : "Retry now"}
-                </button>
-              </div>
-            )}
+            <Link
+              href="/"
+              className="mt-4 inline-flex items-center rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-900"
+            >
+              Back to sender page
+            </Link>
           </div>
         )}
 
         {session && (
-          <>
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
-              <p className="text-xs uppercase tracking-wide text-zinc-500">
-                Session summary
-              </p>
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
+            <p className="text-xs uppercase tracking-wide text-zinc-500">
+              Session summary
+            </p>
 
-              <div className="mt-3 grid gap-3 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-zinc-400">Status</span>
-                  <span className="font-medium text-zinc-200">
-                    {session.status === "closed" ? "Closed" : "Ready"}
-                  </span>
-                </div>
+            <div className="mt-4 grid gap-3 text-sm">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-zinc-400">Status</span>
+                <span className="font-medium text-zinc-100">{session.status}</span>
+              </div>
 
-                <div className="flex items-center justify-between">
-                  <span className="text-zinc-400">Sender peer</span>
-                  <span className="font-medium text-zinc-200">
-                    {session.senderPeerId}
-                  </span>
-                </div>
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-zinc-400">Sender peer</span>
+                <span className="break-all text-right font-medium text-zinc-100">
+                  {session.senderPeerId}
+                </span>
+              </div>
 
-                <div className="flex items-center justify-between">
-                  <span className="text-zinc-400">Receiver peer</span>
-                  <span className="font-medium text-zinc-200">
-                    {session.receiverPeerId ?? "Waiting..."}
-                  </span>
-                </div>
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-zinc-400">Receiver peer</span>
+                <span className="break-all text-right font-medium text-zinc-100">
+                  {session.receiverPeerId ?? "Waiting..."}
+                </span>
+              </div>
 
-                <div className="flex items-center justify-between">
-                  <span className="text-zinc-400">Receiver joined</span>
-                  <span className="font-medium text-zinc-200">
-                    {session.receiverJoinedAt
-                      ? new Date(session.receiverJoinedAt).toLocaleTimeString()
-                      : "Not yet"}
-                  </span>
-                </div>
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-zinc-400">Receiver joined</span>
+                <span className="font-medium text-zinc-100">
+                  {session.receiverJoinedAt
+                    ? new Date(session.receiverJoinedAt).toLocaleTimeString()
+                    : "Not yet"}
+                </span>
+              </div>
 
-                <div className="flex items-center justify-between">
-                  <span className="text-zinc-400">Files</span>
-                  <span className="font-medium text-zinc-200">
-                    {session.fileCount}
-                  </span>
-                </div>
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-zinc-400">Files</span>
+                <span className="font-medium text-zinc-100">{session.fileCount}</span>
+              </div>
 
-                <div className="flex items-center justify-between">
-                  <span className="text-zinc-400">Total size</span>
-                  <span className="font-medium text-zinc-200">
-                    {formatBytes(session.totalSize)}
-                  </span>
-                </div>
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-zinc-400">Total size</span>
+                <span className="font-medium text-zinc-100">
+                  {formatBytes(session.totalSize)}
+                </span>
+              </div>
 
-                <div className="flex items-center justify-between">
-                  <span className="text-zinc-400">Expires</span>
-                  <span className="font-medium text-zinc-200">
-                    {new Date(session.expiresAt).toLocaleString()}
-                  </span>
-                </div>
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-zinc-400">Expires</span>
+                <span className="font-medium text-zinc-100">
+                  {new Date(session.expiresAt).toLocaleString()}
+                </span>
               </div>
             </div>
-
-            <SessionFileList files={session.files} />
-          </>
+          </div>
         )}
+
+        {session && <SessionFileList files={session.files} />}
       </div>
     </div>
   );

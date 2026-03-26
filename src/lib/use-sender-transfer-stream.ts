@@ -33,6 +33,14 @@ type SenderTransferStreamSnapshot = {
   errorMessage: string | null;
 };
 
+type ActiveTransfer = {
+  file: File;
+  fileIndex: number;
+  bytesSent: number;
+  bytesAcknowledged: number;
+  transferredBytesBeforeCurrent: number;
+};
+
 const INITIAL_STATE: SenderTransferStreamSnapshot = {
   status: "idle",
   fileName: null,
@@ -63,7 +71,8 @@ export function useSenderTransferStream({
     useState<SenderTransferStreamSnapshot>(INITIAL_STATE);
 
   const snapshotRef = useRef(snapshot);
-  const sendTimeoutRef = useRef<number | null>(null);
+  const activeTransferRef = useRef<ActiveTransfer | null>(null);
+  const isCancelledRef = useRef(false);
 
   useEffect(() => {
     snapshotRef.current = snapshot;
@@ -71,33 +80,22 @@ export function useSenderTransferStream({
 
   useEffect(() => {
     if (!connection) {
+      activeTransferRef.current = null;
+      isCancelledRef.current = false;
       setSnapshot(INITIAL_STATE);
-
-      if (sendTimeoutRef.current !== null) {
-        window.clearTimeout(sendTimeoutRef.current);
-        sendTimeoutRef.current = null;
-      }
-
       return;
     }
 
-    let isCancelled = false;
-
-    const clearScheduledSend = () => {
-      if (sendTimeoutRef.current !== null) {
-        window.clearTimeout(sendTimeoutRef.current);
-        sendTimeoutRef.current = null;
-      }
-    };
+    isCancelledRef.current = false;
 
     const failTransfer = (message: string) => {
-      clearScheduledSend();
-
       try {
         connection.send(createErrorMessage(message));
       } catch {
         // Best effort only.
       }
+
+      activeTransferRef.current = null;
 
       setSnapshot((current) => ({
         ...current,
@@ -108,71 +106,84 @@ export function useSenderTransferStream({
       connection.close();
     };
 
-    const streamFileFromOffset = async (
+    const sendNextChunk = async () => {
+      const activeTransfer = activeTransferRef.current;
+
+      if (!activeTransfer || isCancelledRef.current || !connection.open) {
+        return;
+      }
+
+      const { file } = activeTransfer;
+      const startOffset = activeTransfer.bytesAcknowledged;
+
+      if (startOffset >= file.size) {
+        return;
+      }
+
+      const endOffset = Math.min(file.size, startOffset + MAX_CHUNK_SIZE);
+      const final = endOffset >= file.size;
+
+      try {
+        const bytes = await file.slice(startOffset, endOffset).arrayBuffer();
+
+        if (isCancelledRef.current || !connection.open) {
+          return;
+        }
+
+        connection.send(
+          createChunkMessage({
+            fileName: file.name,
+            offset: startOffset,
+            bytes,
+            final,
+          }),
+        );
+
+        activeTransferRef.current = {
+          ...activeTransfer,
+          bytesSent: endOffset,
+        };
+
+        setSnapshot({
+          status: "streaming",
+          fileName: file.name,
+          fileIndex: activeTransfer.fileIndex + 1,
+          totalFiles: files.length,
+          fileSize: file.size,
+          offset: endOffset,
+          bytesSent: endOffset,
+          bytesAcknowledged: activeTransfer.bytesAcknowledged,
+          totalBytesAcknowledged:
+            activeTransfer.transferredBytesBeforeCurrent +
+            activeTransfer.bytesAcknowledged,
+          completedFiles: activeTransfer.fileIndex,
+          errorMessage: null,
+        });
+      } catch (error) {
+        failTransfer(
+          error instanceof Error
+            ? error.message
+            : "Failed to stream file chunk.",
+        );
+      }
+    };
+
+    const beginTransfer = async (
       file: File,
       fileIndex: number,
       startOffset: number,
     ) => {
-      let offset = startOffset;
       const transferredBytesBeforeCurrent = getTransferredBytesBeforeIndex(
         files,
         fileIndex,
       );
 
-      const sendNextChunk = () => {
-        sendTimeoutRef.current = window.setTimeout(async () => {
-          if (isCancelled || !connection.open) {
-            return;
-          }
-
-          const end = Math.min(file.size, offset + MAX_CHUNK_SIZE);
-          const final = end >= file.size;
-
-          try {
-            const bytes = await file.slice(offset, end).arrayBuffer();
-
-            if (isCancelled || !connection.open) {
-              return;
-            }
-
-            connection.send(
-              createChunkMessage({
-                fileName: file.name,
-                offset,
-                bytes,
-                final,
-              }),
-            );
-
-            const bytesSent = end;
-
-            setSnapshot((current) => ({
-              ...current,
-              status: "streaming",
-              fileName: file.name,
-              fileIndex: fileIndex + 1,
-              totalFiles: files.length,
-              fileSize: file.size,
-              offset: bytesSent,
-              bytesSent,
-              totalBytesAcknowledged:
-                transferredBytesBeforeCurrent + current.bytesAcknowledged,
-              errorMessage: null,
-            }));
-
-            offset = end;
-
-            if (!final) {
-              sendNextChunk();
-            }
-          } catch (error) {
-            failTransfer(
-              error instanceof Error
-                ? error.message
-                : "Failed to stream file chunk.",
-            );
-          }
-        }, 0);
+      activeTransferRef.current = {
+        file,
+        fileIndex,
+        bytesSent: startOffset,
+        bytesAcknowledged: startOffset,
+        transferredBytesBeforeCurrent,
       };
 
       setSnapshot({
@@ -184,61 +195,82 @@ export function useSenderTransferStream({
         offset: startOffset,
         bytesSent: startOffset,
         bytesAcknowledged: startOffset,
-        totalBytesAcknowledged: transferredBytesBeforeCurrent + startOffset,
+        totalBytesAcknowledged:
+          transferredBytesBeforeCurrent + startOffset,
         completedFiles: fileIndex,
         errorMessage: null,
       });
 
-      sendNextChunk();
+      await sendNextChunk();
     };
 
-    const handleChunkAck = (fileName: string, bytesReceived: number) => {
-      const current = snapshotRef.current;
+    const handleChunkAck = async (
+      fileName: string,
+      bytesReceived: number,
+    ) => {
+      const activeTransfer = activeTransferRef.current;
 
-      if (!current.fileName || current.fileName !== fileName) {
+      if (!activeTransfer || activeTransfer.file.name !== fileName) {
         failTransfer(
           `Received chunk acknowledgement for unexpected file "${fileName}".`,
         );
         return;
       }
 
-      if (bytesReceived < current.bytesAcknowledged) {
+      if (bytesReceived < activeTransfer.bytesAcknowledged) {
         failTransfer(`Received out-of-order acknowledgement for "${fileName}".`);
         return;
       }
 
-      if (bytesReceived > current.bytesSent) {
+      if (bytesReceived === activeTransfer.bytesAcknowledged) {
+        return;
+      }
+
+      if (bytesReceived > activeTransfer.bytesSent) {
         failTransfer(
           `Received acknowledgement beyond sent bytes for "${fileName}".`,
         );
         return;
       }
 
-      const transferredBytesBeforeCurrent = getTransferredBytesBeforeIndex(
-        files,
-        current.fileIndex - 1,
-      );
+      const nextActiveTransfer: ActiveTransfer = {
+        ...activeTransfer,
+        bytesAcknowledged: bytesReceived,
+      };
+
+      activeTransferRef.current = nextActiveTransfer;
+
+      const transferCompleted = bytesReceived === activeTransfer.file.size;
 
       setSnapshot((previous) => ({
         ...previous,
+        status: transferCompleted ? "idle" : "streaming",
+        fileName: activeTransfer.file.name,
+        fileIndex: activeTransfer.fileIndex + 1,
+        totalFiles: files.length,
+        fileSize: activeTransfer.file.size,
+        offset: activeTransfer.bytesSent,
+        bytesSent: activeTransfer.bytesSent,
         bytesAcknowledged: bytesReceived,
-        totalBytesAcknowledged: transferredBytesBeforeCurrent + bytesReceived,
-        completedFiles:
-          bytesReceived === previous.fileSize &&
-          previous.bytesSent === previous.fileSize
-            ? previous.fileIndex
-            : previous.completedFiles,
-        status:
-          bytesReceived === previous.fileSize &&
-          previous.bytesSent === previous.fileSize
-            ? "idle"
-            : previous.status,
+        totalBytesAcknowledged:
+          activeTransfer.transferredBytesBeforeCurrent + bytesReceived,
+        completedFiles: transferCompleted
+          ? activeTransfer.fileIndex + 1
+          : previous.completedFiles,
+        errorMessage: null,
       }));
+
+      if (transferCompleted) {
+        activeTransferRef.current = null;
+        return;
+      }
+
+      await sendNextChunk();
     };
 
     const handleData = (value: unknown) => {
       if (isTransferErrorMessage(value)) {
-        clearScheduledSend();
+        activeTransferRef.current = null;
 
         setSnapshot((current) => ({
           ...current,
@@ -255,7 +287,7 @@ export function useSenderTransferStream({
       }
 
       if (isTransferChunkAckMessage(value)) {
-        handleChunkAck(value.payload.fileName, value.payload.bytesReceived);
+        void handleChunkAck(value.payload.fileName, value.payload.bytesReceived);
         return;
       }
 
@@ -274,7 +306,7 @@ export function useSenderTransferStream({
         return;
       }
 
-      if (snapshotRef.current.status === "streaming") {
+      if (activeTransferRef.current) {
         failTransfer("Received a transfer start request while already streaming.");
         return;
       }
@@ -295,15 +327,15 @@ export function useSenderTransferStream({
         return;
       }
 
-      void streamFileFromOffset(file, fileIndex, value.payload.offset);
+      void beginTransfer(file, fileIndex, value.payload.offset);
     };
 
     const handleClose = () => {
-      clearScheduledSend();
+      activeTransferRef.current = null;
     };
 
     const handleError = (error: Error) => {
-      clearScheduledSend();
+      activeTransferRef.current = null;
 
       setSnapshot((current) => ({
         ...current,
@@ -317,8 +349,8 @@ export function useSenderTransferStream({
     connection.on("error", handleError);
 
     return () => {
-      isCancelled = true;
-      clearScheduledSend();
+      isCancelledRef.current = true;
+      activeTransferRef.current = null;
       connection.off("data", handleData);
       connection.off("close", handleClose);
       connection.off("error", handleError);

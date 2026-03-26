@@ -1,16 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { DataConnection } from "peerjs";
 import { getLocalDeviceInfo } from "@/lib/device";
 import {
   createErrorMessage,
   createRequestInfoMessage,
-  getUnexpectedHandshakeMessageError,
+  isTransferChunkAckMessage,
   isTransferChunkMessage,
   isTransferDoneMessage,
   isTransferErrorMessage,
   isTransferInfoMessage,
+  isTransferStartMessage,
 } from "@/lib/transfer-protocol";
 import { DeviceInfo, TransferInfoPayload } from "@/types/transfer";
 
@@ -38,12 +39,7 @@ export function useReceiverTransferMetadata({
   const [snapshot, setSnapshot] =
     useState<ReceiverTransferMetadataSnapshot>(INITIAL_STATE);
 
-  const snapshotRef = useRef(snapshot);
   const deviceInfo = useMemo(() => getLocalDeviceInfo(), []);
-
-  useEffect(() => {
-    snapshotRef.current = snapshot;
-  }, [snapshot]);
 
   useEffect(() => {
     if (!connection) {
@@ -51,26 +47,10 @@ export function useReceiverTransferMetadata({
       return;
     }
 
-    const failHandshake = (message: string) => {
-      try {
-        connection.send(createErrorMessage(message));
-      } catch {
-        // Best effort only.
-      }
-
-      setSnapshot({
-        status: "failed",
-        deviceInfo,
-        infoPayload: null,
-        errorMessage: message,
-      });
-
-      connection.close();
-    };
-
-    const sendRequestInfo = () => {
+    const requestInfo = () => {
       try {
         connection.send(createRequestInfoMessage(deviceInfo));
+
         setSnapshot({
           status: "syncing",
           deviceInfo,
@@ -91,7 +71,7 @@ export function useReceiverTransferMetadata({
     };
 
     const handleOpen = () => {
-      sendRequestInfo();
+      requestInfo();
     };
 
     const handleData = (value: unknown) => {
@@ -102,21 +82,37 @@ export function useReceiverTransferMetadata({
           infoPayload: null,
           errorMessage: value.payload.message,
         });
+
         connection.close();
         return;
       }
 
-      const hasCompletedHandshake = snapshotRef.current.status === "ready";
-
       if (
-        hasCompletedHandshake &&
-        (isTransferChunkMessage(value) || isTransferDoneMessage(value))
+        isTransferStartMessage(value) ||
+        isTransferChunkMessage(value) ||
+        isTransferChunkAckMessage(value) ||
+        isTransferDoneMessage(value)
       ) {
         return;
       }
 
       if (!isTransferInfoMessage(value)) {
-        failHandshake(getUnexpectedHandshakeMessageError(value, "info"));
+        try {
+          connection.send(
+            createErrorMessage('Unexpected handshake message. Expected "info".'),
+          );
+        } catch {
+          // Best effort only.
+        }
+
+        setSnapshot({
+          status: "failed",
+          deviceInfo,
+          infoPayload: null,
+          errorMessage: 'Unexpected handshake message. Expected "info".',
+        });
+
+        connection.close();
         return;
       }
 
@@ -141,7 +137,7 @@ export function useReceiverTransferMetadata({
     connection.on("error", handleError);
 
     if (connection.open) {
-      sendRequestInfo();
+      requestInfo();
     }
 
     return () => {
