@@ -81,7 +81,6 @@ export default function Home() {
         const response = await fetch(`/api/sessions/${sessionId}/touch`, {
           method: "POST",
         });
-
         const data: unknown = await response.json();
 
         if (!response.ok) {
@@ -110,7 +109,7 @@ export default function Home() {
           sessionId: nextSession.id,
           localPeerId: senderPeerId,
           remotePeerId: nextSession.receiverPeerId,
-          status: nextSession.receiverPeerId ? "ready" : "waiting_for_peer",
+          status: nextSession.receiverPeerId ? "connecting" : "waiting_for_peer",
           errorMessage: null,
         }));
       } catch {
@@ -213,7 +212,6 @@ export default function Home() {
           files: selectedFiles.map(toTransferFileSummary),
         }),
       });
-
       const data: unknown = await response.json();
 
       if (!response.ok) {
@@ -238,7 +236,7 @@ export default function Home() {
         sessionId: nextSession.id,
         localPeerId: senderPeerId,
         remotePeerId: nextSession.receiverPeerId,
-        status: nextSession.receiverPeerId ? "ready" : "waiting_for_peer",
+        status: nextSession.receiverPeerId ? "connecting" : "waiting_for_peer",
         errorMessage: null,
       }));
     } catch (error) {
@@ -274,7 +272,6 @@ export default function Home() {
       const response = await fetch(`/api/sessions/${session.id}/close`, {
         method: "POST",
       });
-
       const data: unknown = await response.json();
 
       if (!response.ok) {
@@ -286,7 +283,7 @@ export default function Home() {
             ? data.error
             : "Failed to close transfer session.";
 
-          throw new Error(errorMessage);
+        throw new Error(errorMessage);
       }
 
       const nextSession = data as TransferSession;
@@ -339,11 +336,9 @@ export default function Home() {
           <p className="text-sm uppercase tracking-[0.2em] text-zinc-400">
             Sender
           </p>
-
           <h1 className="mt-4 text-4xl font-bold tracking-tight sm:text-6xl">
             Send files directly
           </h1>
-
           <p className="mt-4 max-w-2xl text-sm leading-6 text-zinc-400 sm:text-base">
             Select files on this device, generate a share link, and prepare for
             direct browser-to-browser delivery.
@@ -357,7 +352,6 @@ export default function Home() {
             >
               Choose files
             </button>
-
             <button
               type="button"
               onClick={handleClearSelection}
@@ -389,9 +383,7 @@ export default function Home() {
           <TransferCard
             canCreateLink={isReadyToCreateLink}
             isCreatingLink={isCreatingLink}
-            shareUrl={
-              session?.status === "closed" ? null : session?.shareUrl ?? null
-            }
+            shareUrl={session?.status === "closed" ? null : session?.shareUrl ?? null}
             onCreateLink={handleCreateLink}
             onCopyLink={handleCopyLink}
             hasCopiedLink={hasCopiedLink}

@@ -8,6 +8,23 @@ type TransferConnectionCardProps = {
   connection: TransferConnectionState;
 };
 
+function getConnectionHint(connection: TransferConnectionState) {
+  switch (connection.status) {
+    case "waiting_for_peer":
+      return "Waiting for the other browser to join this transfer session.";
+    case "connecting":
+      return "Both peers are known. The browser-to-browser transport handshake is the next step.";
+    case "connected":
+      return "Peer transport is connected. Metadata sync is next.";
+    case "syncing_metadata":
+      return "Transport is live and transfer metadata is being exchanged.";
+    case "ready":
+      return "Peer transport and metadata exchange are ready for transfer.";
+    default:
+      return "Peer transport is not connected yet. Upcoming commits will wire this state to the real browser-to-browser flow.";
+  }
+}
+
 export function TransferConnectionCard({
   connection,
 }: TransferConnectionCardProps) {
@@ -68,8 +85,7 @@ export function TransferConnectionCard({
 
       {!isTerminalTransferConnectionStatus(connection.status) && (
         <p className="mt-4 text-xs text-zinc-500">
-          Peer transport is not connected yet. Upcoming commits will wire this
-          state to the real browser-to-browser flow.
+          {getConnectionHint(connection)}
         </p>
       )}
     </div>

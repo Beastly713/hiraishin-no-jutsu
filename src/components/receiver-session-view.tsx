@@ -56,7 +56,7 @@ export function ReceiverSessionView({
       setConnection((current) => ({
         ...current,
         status:
-          current.status === "ready" && !isClosedSession
+          current.status === "connecting" && !isClosedSession
             ? current.status
             : "resolving_session",
         localPeerId: receiverPeerId,
@@ -68,7 +68,6 @@ export function ReceiverSessionView({
           method: "GET",
           cache: "no-store",
         });
-
         const data: unknown = await response.json();
 
         if (!response.ok) {
@@ -114,7 +113,6 @@ export function ReceiverSessionView({
               receiverPeerId,
             }),
           });
-
           const joinData: unknown = await joinResponse.json();
 
           if (!joinResponse.ok) {
@@ -134,13 +132,14 @@ export function ReceiverSessionView({
           }
 
           const joinedSession = joinData as TransferSession;
+
           setSession(joinedSession);
           setConnection((current) => ({
             ...current,
             sessionId: joinedSession.id,
             localPeerId: receiverPeerId,
             remotePeerId: joinedSession.senderPeerId,
-            status: "ready",
+            status: "connecting",
             errorMessage: null,
           }));
           return;
@@ -151,7 +150,7 @@ export function ReceiverSessionView({
           sessionId: nextSession.id,
           localPeerId: receiverPeerId,
           remotePeerId: nextSession.senderPeerId,
-          status: "ready",
+          status: "connecting",
           errorMessage: null,
         }));
       } catch (error) {
@@ -184,7 +183,6 @@ export function ReceiverSessionView({
 
     return () => {
       isCancelled = true;
-
       if (intervalId !== null) {
         window.clearInterval(intervalId);
       }
@@ -202,11 +200,9 @@ export function ReceiverSessionView({
       <p className="text-sm uppercase tracking-[0.2em] text-zinc-400">
         Receiver
       </p>
-
       <h1 className="mt-4 text-3xl font-bold tracking-tight sm:text-5xl">
         Incoming transfer
       </h1>
-
       <p className="mt-4 text-sm leading-6 text-zinc-400 sm:text-base">
         Resolve the shared session and prepare for the upcoming direct transfer
         flow.
@@ -229,7 +225,7 @@ export function ReceiverSessionView({
             </p>
             <p className="mt-2 text-sm text-zinc-200">
               {session.receiverPeerId
-                ? "Receiver joined. Session is ready."
+                ? "Receiver joined. Browser-to-browser connection is starting."
                 : "Joining receiver to session..."}
             </p>
             <p className="mt-1 text-xs text-zinc-400">
@@ -250,7 +246,6 @@ export function ReceiverSessionView({
               The sender is no longer keeping this link active, so the transfer
               cannot continue from this page.
             </p>
-
             <div className="mt-4 flex flex-wrap gap-3">
               <button
                 type="button"
@@ -260,7 +255,6 @@ export function ReceiverSessionView({
               >
                 {isRetrying ? "Checking..." : "Check again"}
               </button>
-
               <Link
                 href="/"
                 className="inline-flex items-center rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-950"
@@ -280,7 +274,6 @@ export function ReceiverSessionView({
             <p className="mt-1 text-xs text-red-200/80">
               The link may be expired, invalid, or no longer available.
             </p>
-
             {isValidId && (
               <div className="mt-4">
                 <button
@@ -302,7 +295,6 @@ export function ReceiverSessionView({
               <p className="text-xs uppercase tracking-wide text-zinc-500">
                 Session summary
               </p>
-
               <div className="mt-3 grid gap-3 text-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-400">Status</span>
@@ -310,21 +302,18 @@ export function ReceiverSessionView({
                     {session.status === "closed" ? "Closed" : "Ready"}
                   </span>
                 </div>
-
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-400">Sender peer</span>
                   <span className="font-medium text-zinc-200">
                     {session.senderPeerId}
                   </span>
                 </div>
-
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-400">Receiver peer</span>
                   <span className="font-medium text-zinc-200">
                     {session.receiverPeerId ?? "Waiting..."}
                   </span>
                 </div>
-
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-400">Receiver joined</span>
                   <span className="font-medium text-zinc-200">
@@ -333,21 +322,18 @@ export function ReceiverSessionView({
                       : "Not yet"}
                   </span>
                 </div>
-
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-400">Files</span>
                   <span className="font-medium text-zinc-200">
                     {session.fileCount}
                   </span>
                 </div>
-
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-400">Total size</span>
                   <span className="font-medium text-zinc-200">
                     {formatBytes(session.totalSize)}
                   </span>
                 </div>
-
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-400">Expires</span>
                   <span className="font-medium text-zinc-200">
