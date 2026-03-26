@@ -4,8 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { SessionFileList } from "@/components/session-file-list";
 import { TransferConnectionCard } from "@/components/transfer-connection-card";
+import { TransferReadyCard } from "@/components/transfer-ready-card";
 import { formatBytes } from "@/lib/format";
 import { createTransferConnectionState } from "@/lib/transfer-connection";
+import { isTransferReadyToStart } from "@/lib/transfer-readiness";
 import { isValidSessionId } from "@/lib/session";
 import { useBrowserPeer } from "@/lib/use-browser-peer";
 import { useReceiverTransferPeer } from "@/lib/use-receiver-transfer-peer";
@@ -371,6 +373,23 @@ export function ReceiverSessionView({
 
         <TransferConnectionCard connection={connection} />
 
+        {isTransferReadyToStart(connection.status) && (
+          <TransferReadyCard
+            connection={connection}
+            fileCount={
+              connection.progress.totalFiles > 0
+                ? connection.progress.totalFiles
+                : session?.fileCount ?? 0
+            }
+            totalSize={
+              connection.progress.totalBytesTotal > 0
+                ? connection.progress.totalBytesTotal
+                : session?.totalSize ?? 0
+            }
+            formatBytes={formatBytes}
+          />
+        )}
+
         {session && !isClosedSession && (
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
             <p className="text-xs uppercase tracking-wide text-zinc-500">
@@ -404,7 +423,7 @@ export function ReceiverSessionView({
               </p>
               <p className="mt-2 text-sm text-zinc-200">
                 {connection.status === "failed"
-                  ? "The peer channel failed or received an invalid handshake message before transfer began."
+                  ? "The peer channel failed before transfer began."
                   : "The peer channel closed before transfer began."}
               </p>
               <p className="mt-1 text-xs text-zinc-400">

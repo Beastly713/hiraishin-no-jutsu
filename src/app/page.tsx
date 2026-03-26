@@ -6,8 +6,10 @@ import { PageShell } from "@/components/page-shell";
 import { SessionSummaryCard } from "@/components/session-summary-card";
 import { TransferCard } from "@/components/transfer-card";
 import { TransferConnectionCard } from "@/components/transfer-connection-card";
+import { TransferReadyCard } from "@/components/transfer-ready-card";
 import { formatBytes } from "@/lib/format";
 import { createTransferConnectionState } from "@/lib/transfer-connection";
+import { isTransferReadyToStart } from "@/lib/transfer-readiness";
 import { useBrowserPeer } from "@/lib/use-browser-peer";
 import { useSenderTransferPeer } from "@/lib/use-sender-transfer-peer";
 import {
@@ -527,6 +529,15 @@ export default function Home() {
           />
 
           <TransferConnectionCard connection={connection} />
+
+          {session && isTransferReadyToStart(connection.status) && (
+            <TransferReadyCard
+              connection={connection}
+              fileCount={session.fileCount}
+              totalSize={session.totalSize}
+              formatBytes={formatBytes}
+            />
+          )}
 
           {session && (
             <SessionSummaryCard

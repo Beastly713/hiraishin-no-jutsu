@@ -19,7 +19,7 @@ function getConnectionHint(connection: TransferConnectionState) {
     case "syncing_metadata":
       return "The receiver has requested transfer info and the sender is responding with file metadata.";
     case "ready":
-      return "The live channel and initial metadata handshake are complete. Transfer start can be wired next.";
+      return "Phase 2 is complete. The live channel and initial metadata handshake are ready for transfer-start wiring.";
     case "closed":
       return "The live peer channel closed before transfer started.";
     default:
