@@ -22,25 +22,37 @@ type UseSenderTransferStreamOptions = {
 type SenderTransferStreamSnapshot = {
   status: "idle" | "streaming" | "failed";
   fileName: string | null;
+  fileIndex: number;
+  totalFiles: number;
   fileSize: number;
   offset: number;
   bytesSent: number;
   bytesAcknowledged: number;
+  totalBytesAcknowledged: number;
+  completedFiles: number;
   errorMessage: string | null;
 };
 
 const INITIAL_STATE: SenderTransferStreamSnapshot = {
   status: "idle",
   fileName: null,
+  fileIndex: 0,
+  totalFiles: 0,
   fileSize: 0,
   offset: 0,
   bytesSent: 0,
   bytesAcknowledged: 0,
+  totalBytesAcknowledged: 0,
+  completedFiles: 0,
   errorMessage: null,
 };
 
-function findTransferFile(files: File[], fileName: string) {
-  return files.find((file) => file.name === fileName) ?? null;
+function findTransferFileIndex(files: File[], fileName: string) {
+  return files.findIndex((file) => file.name === fileName);
+}
+
+function getTransferredBytesBeforeIndex(files: File[], index: number) {
+  return files.slice(0, index).reduce((sum, file) => sum + file.size, 0);
 }
 
 export function useSenderTransferStream({
@@ -96,8 +108,16 @@ export function useSenderTransferStream({
       connection.close();
     };
 
-    const streamFileFromOffset = async (file: File, startOffset: number) => {
+    const streamFileFromOffset = async (
+      file: File,
+      fileIndex: number,
+      startOffset: number,
+    ) => {
       let offset = startOffset;
+      const transferredBytesBeforeCurrent = getTransferredBytesBeforeIndex(
+        files,
+        fileIndex,
+      );
 
       const sendNextChunk = () => {
         sendTimeoutRef.current = window.setTimeout(async () => {
@@ -130,9 +150,13 @@ export function useSenderTransferStream({
               ...current,
               status: "streaming",
               fileName: file.name,
+              fileIndex: fileIndex + 1,
+              totalFiles: files.length,
               fileSize: file.size,
               offset: bytesSent,
               bytesSent,
+              totalBytesAcknowledged:
+                transferredBytesBeforeCurrent + current.bytesAcknowledged,
               errorMessage: null,
             }));
 
@@ -154,10 +178,14 @@ export function useSenderTransferStream({
       setSnapshot({
         status: "streaming",
         fileName: file.name,
+        fileIndex: fileIndex + 1,
+        totalFiles: files.length,
         fileSize: file.size,
         offset: startOffset,
         bytesSent: startOffset,
         bytesAcknowledged: startOffset,
+        totalBytesAcknowledged: transferredBytesBeforeCurrent + startOffset,
+        completedFiles: fileIndex,
         errorMessage: null,
       });
 
@@ -168,14 +196,14 @@ export function useSenderTransferStream({
       const current = snapshotRef.current;
 
       if (!current.fileName || current.fileName !== fileName) {
-        failTransfer(`Received chunk acknowledgement for unexpected file "${fileName}".`);
+        failTransfer(
+          `Received chunk acknowledgement for unexpected file "${fileName}".`,
+        );
         return;
       }
 
       if (bytesReceived < current.bytesAcknowledged) {
-        failTransfer(
-          `Received out-of-order acknowledgement for "${fileName}".`,
-        );
+        failTransfer(`Received out-of-order acknowledgement for "${fileName}".`);
         return;
       }
 
@@ -186,9 +214,20 @@ export function useSenderTransferStream({
         return;
       }
 
+      const transferredBytesBeforeCurrent = getTransferredBytesBeforeIndex(
+        files,
+        current.fileIndex - 1,
+      );
+
       setSnapshot((previous) => ({
         ...previous,
         bytesAcknowledged: bytesReceived,
+        totalBytesAcknowledged: transferredBytesBeforeCurrent + bytesReceived,
+        completedFiles:
+          bytesReceived === previous.fileSize &&
+          previous.bytesSent === previous.fileSize
+            ? previous.fileIndex
+            : previous.completedFiles,
         status:
           bytesReceived === previous.fileSize &&
           previous.bytesSent === previous.fileSize
@@ -240,12 +279,14 @@ export function useSenderTransferStream({
         return;
       }
 
-      const file = findTransferFile(files, value.payload.fileName);
+      const fileIndex = findTransferFileIndex(files, value.payload.fileName);
 
-      if (!file) {
+      if (fileIndex === -1) {
         failTransfer(`Requested file "${value.payload.fileName}" was not found.`);
         return;
       }
+
+      const file = files[fileIndex];
 
       if (value.payload.offset < 0 || value.payload.offset > file.size) {
         failTransfer(
@@ -254,7 +295,7 @@ export function useSenderTransferStream({
         return;
       }
 
-      void streamFileFromOffset(file, value.payload.offset);
+      void streamFileFromOffset(file, fileIndex, value.payload.offset);
     };
 
     const handleClose = () => {

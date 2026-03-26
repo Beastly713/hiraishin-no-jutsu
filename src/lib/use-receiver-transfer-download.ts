@@ -14,6 +14,13 @@ import {
 } from "@/lib/transfer-protocol";
 import { TransferInfoPayload } from "@/types/transfer";
 
+type CompletedReceiverDownload = {
+  fileName: string;
+  fileIndex: number;
+  fileSize: number;
+  downloadUrl: string;
+};
+
 type UseReceiverTransferDownloadOptions = {
   connection: DataConnection | null;
   infoPayload: TransferInfoPayload | null;
@@ -30,6 +37,7 @@ type ReceiverTransferDownloadSnapshot = {
   totalBytesTotal: number;
   downloadUrl: string | null;
   lastAcknowledgedOffset: number;
+  completedDownloads: CompletedReceiverDownload[];
   errorMessage: string | null;
 };
 
@@ -44,6 +52,7 @@ const INITIAL_STATE: ReceiverTransferDownloadSnapshot = {
   totalBytesTotal: 0,
   downloadUrl: null,
   lastAcknowledgedOffset: 0,
+  completedDownloads: [],
   errorMessage: null,
 };
 
@@ -61,7 +70,8 @@ export function useReceiverTransferDownload({
   const chunksRef = useRef<ArrayBuffer[]>([]);
   const currentFileNameRef = useRef<string | null>(null);
   const currentFileBytesRef = useRef(0);
-  const currentDownloadUrlRef = useRef<string | null>(null);
+  const completedBytesRef = useRef(0);
+  const downloadUrlsRef = useRef<string[]>([]);
 
   const totalBytesTotal = useMemo(() => {
     return infoPayload?.files.reduce((sum, file) => sum + file.size, 0) ?? 0;
@@ -69,14 +79,12 @@ export function useReceiverTransferDownload({
 
   useEffect(() => {
     if (!connection || !infoPayload) {
-      if (currentDownloadUrlRef.current) {
-        URL.revokeObjectURL(currentDownloadUrlRef.current);
-        currentDownloadUrlRef.current = null;
-      }
-
+      downloadUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      downloadUrlsRef.current = [];
       chunksRef.current = [];
       currentFileNameRef.current = null;
       currentFileBytesRef.current = 0;
+      completedBytesRef.current = 0;
       setSnapshot(INITIAL_STATE);
       return;
     }
@@ -151,11 +159,6 @@ export function useReceiverTransferDownload({
         currentFileNameRef.current = value.payload.fileName;
         currentFileBytesRef.current = 0;
         chunksRef.current = [];
-
-        if (currentDownloadUrlRef.current) {
-          URL.revokeObjectURL(currentDownloadUrlRef.current);
-          currentDownloadUrlRef.current = null;
-        }
       }
 
       if (currentFileNameRef.current !== value.payload.fileName) {
@@ -173,7 +176,8 @@ export function useReceiverTransferDownload({
       }
 
       const chunkBytes = value.payload.bytes;
-      const nextFileBytesReceived = currentFileBytesRef.current + chunkBytes.byteLength;
+      const nextFileBytesReceived =
+        currentFileBytesRef.current + chunkBytes.byteLength;
 
       if (nextFileBytesReceived > fileInfo.size) {
         failTransfer(`Received too many bytes for "${value.payload.fileName}".`);
@@ -185,6 +189,9 @@ export function useReceiverTransferDownload({
 
       acknowledgeChunk(value.payload.fileName, nextFileBytesReceived);
 
+      const nextTotalBytesReceived =
+        completedBytesRef.current + nextFileBytesReceived;
+
       const nextSnapshotBase: ReceiverTransferDownloadSnapshot = {
         status: value.payload.final ? "file_ready" : "downloading",
         fileName: fileInfo.name,
@@ -192,10 +199,11 @@ export function useReceiverTransferDownload({
         totalFiles: infoPayload.files.length,
         fileBytesReceived: nextFileBytesReceived,
         fileBytesTotal: fileInfo.size,
-        totalBytesReceived: nextFileBytesReceived,
+        totalBytesReceived: nextTotalBytesReceived,
         totalBytesTotal,
         downloadUrl: null,
         lastAcknowledgedOffset: nextFileBytesReceived,
+        completedDownloads: snapshot.completedDownloads,
         errorMessage: null,
       };
 
@@ -210,18 +218,29 @@ export function useReceiverTransferDownload({
         });
 
         const downloadUrl = URL.createObjectURL(blob);
+        downloadUrlsRef.current.push(downloadUrl);
 
-        if (currentDownloadUrlRef.current) {
-          URL.revokeObjectURL(currentDownloadUrlRef.current);
-        }
+        const completedDownloads = [
+          ...snapshot.completedDownloads,
+          {
+            fileName: fileInfo.name,
+            fileIndex: fileIndex + 1,
+            fileSize: fileInfo.size,
+            downloadUrl,
+          },
+        ];
 
-        currentDownloadUrlRef.current = downloadUrl;
+        completedBytesRef.current = nextTotalBytesReceived;
 
         setSnapshot({
           ...nextSnapshotBase,
           downloadUrl,
+          completedDownloads,
         });
 
+        currentFileNameRef.current = null;
+        currentFileBytesRef.current = 0;
+        chunksRef.current = [];
         return;
       }
 
@@ -229,7 +248,7 @@ export function useReceiverTransferDownload({
     };
 
     const handleClose = () => {
-      // Keep current download URL available for the user.
+      // Keep completed download URLs available for the user.
     };
 
     const handleError = (error: Error) => {
@@ -249,16 +268,14 @@ export function useReceiverTransferDownload({
       connection.off("close", handleClose);
       connection.off("error", handleError);
 
-      if (currentDownloadUrlRef.current) {
-        URL.revokeObjectURL(currentDownloadUrlRef.current);
-        currentDownloadUrlRef.current = null;
-      }
-
+      downloadUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      downloadUrlsRef.current = [];
       chunksRef.current = [];
       currentFileNameRef.current = null;
       currentFileBytesRef.current = 0;
+      completedBytesRef.current = 0;
     };
-  }, [connection, infoPayload, totalBytesTotal]);
+  }, [connection, infoPayload, snapshot.completedDownloads, totalBytesTotal]);
 
   return snapshot;
 }

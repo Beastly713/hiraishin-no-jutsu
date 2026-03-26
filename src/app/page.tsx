@@ -197,9 +197,11 @@ export default function Home() {
         progress: {
           ...current.progress,
           fileName: senderTransferStream.fileName,
+          fileIndex: senderTransferStream.fileIndex,
+          totalFiles: senderTransferStream.totalFiles || current.progress.totalFiles,
           fileBytesTransferred: senderTransferStream.bytesAcknowledged,
           fileBytesTotal: senderTransferStream.fileSize,
-          totalBytesTransferred: senderTransferStream.bytesAcknowledged,
+          totalBytesTransferred: senderTransferStream.totalBytesAcknowledged,
         },
       }));
       return;
@@ -224,9 +226,11 @@ export default function Home() {
         progress: {
           ...current.progress,
           fileName: senderTransferStream.fileName,
+          fileIndex: senderTransferStream.fileIndex,
+          totalFiles: senderTransferStream.totalFiles || current.progress.totalFiles,
           fileBytesTransferred: senderTransferStream.bytesAcknowledged,
           fileBytesTotal: senderTransferStream.fileSize,
-          totalBytesTransferred: senderTransferStream.bytesAcknowledged,
+          totalBytesTransferred: senderTransferStream.totalBytesAcknowledged,
         },
       }));
     }
@@ -234,9 +238,12 @@ export default function Home() {
     senderTransferMetadata.status,
     senderTransferStream.bytesAcknowledged,
     senderTransferStream.errorMessage,
+    senderTransferStream.fileIndex,
     senderTransferStream.fileName,
     senderTransferStream.fileSize,
     senderTransferStream.status,
+    senderTransferStream.totalBytesAcknowledged,
+    senderTransferStream.totalFiles,
   ]);
 
   const totalSize = useMemo(() => {
@@ -489,7 +496,7 @@ export default function Home() {
             ? data.error
             : "Failed to close transfer session.";
 
-          throw new Error(errorMessage);
+        throw new Error(errorMessage);
       }
 
       const nextSession = data as TransferSession;
@@ -609,52 +616,64 @@ export default function Home() {
             />
           )}
 
-          {session && senderTransferStream.status === "streaming" && (
+          {(session && senderTransferStream.status === "streaming") ||
+          senderTransferStream.completedFiles > 0 ? (
             <div className="mt-6 w-full max-w-md rounded-2xl border border-blue-900/60 bg-blue-950/30 px-4 py-4 text-left">
               <p className="text-xs uppercase tracking-wide text-blue-400">
                 Sender stream
               </p>
 
               <p className="mt-2 text-sm text-blue-100">
-                Streaming file chunks and tracking receiver acknowledgements.
+                Streaming files sequentially and tracking receiver acknowledgements.
               </p>
 
               <div className="mt-4 grid gap-3 text-sm">
                 <div className="flex items-center justify-between gap-4">
-                  <span className="text-blue-200/70">File</span>
+                  <span className="text-blue-200/70">Current file</span>
                   <span className="font-medium text-blue-100">
-                    {senderTransferStream.fileName ?? "Unknown"}
+                    {senderTransferStream.fileName ?? "Waiting for next request"}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between gap-4">
-                  <span className="text-blue-200/70">Bytes sent</span>
+                  <span className="text-blue-200/70">File index</span>
                   <span className="font-medium text-blue-100">
-                    {formatBytes(senderTransferStream.bytesSent)}
+                    {senderTransferStream.fileIndex} /{" "}
+                    {senderTransferStream.totalFiles || session?.fileCount || 0}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between gap-4">
                   <span className="text-blue-200/70">Bytes acknowledged</span>
                   <span className="font-medium text-blue-100">
-                    {formatBytes(senderTransferStream.bytesAcknowledged)}
+                    {formatBytes(senderTransferStream.bytesAcknowledged)} /{" "}
+                    {formatBytes(senderTransferStream.fileSize)}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between gap-4">
-                  <span className="text-blue-200/70">Offset</span>
+                  <span className="text-blue-200/70">Total acknowledged</span>
                   <span className="font-medium text-blue-100">
-                    {senderTransferStream.offset}
+                    {formatBytes(senderTransferStream.totalBytesAcknowledged)} /{" "}
+                    {formatBytes(session?.totalSize ?? 0)}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-blue-200/70">Completed files</span>
+                  <span className="font-medium text-blue-100">
+                    {senderTransferStream.completedFiles} /{" "}
+                    {senderTransferStream.totalFiles || session?.fileCount || 0}
                   </span>
                 </div>
               </div>
 
               <p className="mt-4 text-xs text-blue-200/80">
-                This commit makes sender progress acknowledgement-driven. Multi-file
-                sequencing and final transfer completion land next.
+                This commit adds sequential multi-file flow. Final done/completed
+                transition lands next.
               </p>
             </div>
-          )}
+          ) : null}
 
           {session && senderTransferStream.status === "failed" && (
             <div className="mt-6 w-full max-w-md rounded-2xl border border-red-900/60 bg-red-950/40 px-4 py-4 text-left">

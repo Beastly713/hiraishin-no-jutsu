@@ -13,6 +13,7 @@ import { useBrowserPeer } from "@/lib/use-browser-peer";
 import { useReceiverTransferDownload } from "@/lib/use-receiver-transfer-download";
 import { useReceiverTransferMetadata } from "@/lib/use-receiver-transfer-metadata";
 import { useReceiverTransferPeer } from "@/lib/use-receiver-transfer-peer";
+import { useReceiverTransferSequence } from "@/lib/use-receiver-transfer-sequence";
 import { useReceiverTransferStart } from "@/lib/use-receiver-transfer-start";
 import { TransferSession } from "@/types/session";
 import { TransferConnectionState } from "@/types/transfer-connection";
@@ -66,6 +67,12 @@ export function ReceiverSessionView({
   const receiverTransferDownload = useReceiverTransferDownload({
     connection: receiverTransferPeer.connection,
     infoPayload: receiverTransferMetadata.infoPayload,
+  });
+
+  const receiverTransferSequence = useReceiverTransferSequence({
+    connection: receiverTransferPeer.connection,
+    infoPayload: receiverTransferMetadata.infoPayload,
+    completedFileCount: receiverTransferDownload.completedDownloads.length,
   });
 
   useEffect(() => {
@@ -226,6 +233,21 @@ export function ReceiverSessionView({
     receiverTransferDownload.totalBytesReceived,
     receiverTransferDownload.totalBytesTotal,
     receiverTransferDownload.totalFiles,
+  ]);
+
+  useEffect(() => {
+    if (receiverTransferSequence.status !== "failed") {
+      return;
+    }
+
+    setConnection((current) => ({
+      ...current,
+      status: "failed",
+      errorMessage: receiverTransferSequence.errorMessage,
+    }));
+  }, [
+    receiverTransferSequence.errorMessage,
+    receiverTransferSequence.status,
   ]);
 
   useEffect(() => {
@@ -466,8 +488,8 @@ export function ReceiverSessionView({
             </p>
 
             <p className="mt-1 text-xs text-zinc-400">
-              This phase-3 step starts the first file request. Sender-side chunk
-              streaming is already wired.
+              The first request is manual. After that, the receiver will request
+              subsequent files sequentially.
             </p>
 
             {receiverTransferStart.errorMessage && (
@@ -504,7 +526,7 @@ export function ReceiverSessionView({
 
             <p className="mt-2 text-sm text-blue-100">
               {receiverTransferDownload.status === "file_ready"
-                ? "The first streamed file has been fully received."
+                ? "The current file has been fully received."
                 : "Receiving real file chunks over the live peer channel."}
             </p>
 
@@ -541,24 +563,53 @@ export function ReceiverSessionView({
               </div>
             </div>
 
-            {receiverTransferDownload.downloadUrl &&
-              receiverTransferDownload.fileName && (
-                <div className="mt-4">
-                  <a
-                    href={receiverTransferDownload.downloadUrl}
-                    download={receiverTransferDownload.fileName}
-                    className="inline-flex items-center rounded-full border border-blue-700 px-4 py-2 text-sm font-medium text-blue-100 transition hover:border-blue-500 hover:bg-blue-900/30"
-                  >
-                    Download received file
-                  </a>
-                </div>
+            {receiverTransferSequence.status === "waiting" &&
+              receiverTransferSequence.requestedFileName && (
+                <p className="mt-4 text-xs text-blue-200/80">
+                  Requested next file: {receiverTransferSequence.requestedFileName}
+                </p>
               )}
 
-            <p className="mt-4 text-xs text-blue-200/80">
-              This commit adds receiver-side chunk assembly and real byte
-              progress. Acknowledgements, sender progress based on acks, and
-              multi-file sequencing land in the next phase-3 commits.
+            {receiverTransferSequence.status === "complete" && (
+              <p className="mt-4 text-xs text-blue-200/80">
+                All files have been received locally. Final done/completed wiring
+                lands in the next commit.
+              </p>
+            )}
+          </div>
+        )}
+
+        {receiverTransferDownload.completedDownloads.length > 0 && (
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
+            <p className="text-xs uppercase tracking-wide text-zinc-500">
+              Received files
             </p>
+
+            <div className="mt-4 grid gap-3">
+              {receiverTransferDownload.completedDownloads.map((download) => (
+                <div
+                  key={`${download.fileIndex}-${download.fileName}`}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-800 px-4 py-3"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-zinc-100">
+                      {download.fileName}
+                    </p>
+                    <p className="text-xs text-zinc-400">
+                      File {download.fileIndex} · {formatBytes(download.fileSize)}
+                    </p>
+                  </div>
+
+                  <a
+                    href={download.downloadUrl}
+                    download={download.fileName}
+                    className="inline-flex items-center rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-900"
+                  >
+                    Download
+                  </a>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -582,23 +633,27 @@ export function ReceiverSessionView({
             </p>
 
             <p className="mt-2 text-sm text-zinc-200">
-              {receiverTransferDownload.status === "file_ready"
-                ? "The first file was received successfully. The transfer flow remains mid-phase until acknowledgements and transfer completion are wired."
-                : receiverTransferDownload.status === "downloading"
-                  ? "The receiver is consuming live file chunks from the sender."
-                  : receiverTransferStart.status === "started"
-                    ? "The receiver has sent the first transfer-start request. Waiting for sender-side chunks."
-                    : connection.status === "ready"
-                      ? "Transfer metadata is synced. The connection is ready for the first transfer actions."
-                      : connection.status === "syncing_metadata"
-                        ? "Live connection is open. Requesting transfer metadata from the sender..."
-                        : connection.status === "connected"
-                          ? "Receiver is connected to the sender. Metadata exchange is next."
-                          : connection.status === "closed"
-                            ? "The live browser-to-browser channel was closed. You can try reconnecting while the session remains active."
-                            : session.receiverPeerId
-                              ? "Receiver joined. Opening live browser-to-browser connection..."
-                              : "Joining receiver to session..."}
+              {receiverTransferSequence.status === "complete"
+                ? "All files were received locally. The final done/completed transition is the last remaining phase-3 step."
+                : receiverTransferSequence.status === "waiting"
+                  ? `The receiver has requested the next file: ${receiverTransferSequence.requestedFileName}.`
+                  : receiverTransferDownload.status === "downloading"
+                    ? "The receiver is consuming live file chunks from the sender."
+                    : receiverTransferDownload.status === "file_ready"
+                      ? "The receiver finished one file and is progressing through the remaining queued files."
+                      : receiverTransferStart.status === "started"
+                        ? "The receiver has sent the first transfer-start request. Waiting for sender-side chunks."
+                        : connection.status === "ready"
+                          ? "Transfer metadata is synced. The connection is ready for the first transfer actions."
+                          : connection.status === "syncing_metadata"
+                            ? "Live connection is open. Requesting transfer metadata from the sender..."
+                            : connection.status === "connected"
+                              ? "Receiver is connected to the sender. Metadata exchange is next."
+                              : connection.status === "closed"
+                                ? "The live browser-to-browser channel was closed. You can try reconnecting while the session remains active."
+                                : session.receiverPeerId
+                                  ? "Receiver joined. Opening live browser-to-browser connection..."
+                                  : "Joining receiver to session..."}
             </p>
 
             <p className="mt-1 text-xs text-zinc-400">
