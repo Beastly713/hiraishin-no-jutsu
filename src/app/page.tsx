@@ -11,14 +11,15 @@ import { formatBytes } from "@/lib/format";
 import { createTransferConnectionState } from "@/lib/transfer-connection";
 import { isTransferReadyToStart } from "@/lib/transfer-readiness";
 import { useBrowserPeer } from "@/lib/use-browser-peer";
+import { useSenderTransferMetadata } from "@/lib/use-sender-transfer-metadata";
 import { useSenderTransferPeer } from "@/lib/use-sender-transfer-peer";
+import { useSenderTransferStream } from "@/lib/use-sender-transfer-stream";
 import {
   SenderSessionKeepaliveStatus,
   TransferFileSummary,
   TransferSession,
 } from "@/types/session";
 import { TransferConnectionState } from "@/types/transfer-connection";
-import { useSenderTransferMetadata } from "@/lib/use-sender-transfer-metadata";
 
 const SESSION_TOUCH_INTERVAL_MS = 30000;
 
@@ -46,13 +47,20 @@ export default function Home() {
 
   const browserPeer = useBrowserPeer();
   const senderPeerId = browserPeer.peerId;
+
   const senderTransferPeer = useSenderTransferPeer({
     peer: browserPeer.peer,
     sessionId: session?.status === "closed" ? null : session?.id ?? null,
   });
+
   const senderTransferMetadata = useSenderTransferMetadata({
     connection: senderTransferPeer.connection,
     files: session?.files ?? [],
+  });
+
+  const senderTransferStream = useSenderTransferStream({
+    connection: senderTransferPeer.connection,
+    files: selectedFiles,
   });
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -92,7 +100,10 @@ export default function Home() {
       if (senderTransferMetadata.status === "ready") {
         return {
           ...current,
-          status: "ready",
+          status:
+            senderTransferStream.status === "streaming"
+              ? "transferring"
+              : "ready",
           deviceInfo: senderTransferMetadata.deviceInfo,
           errorMessage: null,
           progress: session
@@ -119,6 +130,7 @@ export default function Home() {
     senderTransferMetadata.deviceInfo,
     senderTransferMetadata.errorMessage,
     senderTransferMetadata.status,
+    senderTransferStream.status,
     session,
   ]);
 
@@ -128,7 +140,8 @@ export default function Home() {
         return {
           ...current,
           remotePeerId: senderTransferPeer.remotePeerId,
-          status: "connected",
+          status:
+            current.status === "transferring" ? "transferring" : "connected",
           errorMessage: null,
         };
       }
@@ -147,9 +160,7 @@ export default function Home() {
           ...current,
           remotePeerId: senderTransferPeer.remotePeerId,
           status:
-            current.sessionId && current.remotePeerId
-              ? "closed"
-              : current.status,
+            current.sessionId && current.remotePeerId ? "closed" : current.status,
           errorMessage: null,
         };
       }
@@ -159,7 +170,8 @@ export default function Home() {
         current.sessionId &&
         current.remotePeerId &&
         current.status !== "ready" &&
-        current.status !== "syncing_metadata"
+        current.status !== "syncing_metadata" &&
+        current.status !== "transferring"
       ) {
         return {
           ...current,
@@ -174,6 +186,40 @@ export default function Home() {
     senderTransferPeer.errorMessage,
     senderTransferPeer.remotePeerId,
     senderTransferPeer.status,
+  ]);
+
+  useEffect(() => {
+    if (senderTransferStream.status === "streaming") {
+      setConnection((current) => ({
+        ...current,
+        status: "transferring",
+        errorMessage: null,
+      }));
+      return;
+    }
+
+    if (senderTransferStream.status === "failed") {
+      setConnection((current) => ({
+        ...current,
+        status: "failed",
+        errorMessage: senderTransferStream.errorMessage,
+      }));
+      return;
+    }
+
+    if (
+      senderTransferStream.status === "idle" &&
+      senderTransferMetadata.status === "ready"
+    ) {
+      setConnection((current) => ({
+        ...current,
+        status: "ready",
+      }));
+    }
+  }, [
+    senderTransferMetadata.status,
+    senderTransferStream.errorMessage,
+    senderTransferStream.status,
   ]);
 
   const totalSize = useMemo(() => {
@@ -205,6 +251,7 @@ export default function Home() {
         const response = await fetch(`/api/sessions/${sessionId}/touch`, {
           method: "POST",
         });
+
         const data: unknown = await response.json();
 
         if (!response.ok) {
@@ -224,27 +271,29 @@ export default function Home() {
         }
 
         const nextSession = data as TransferSession;
-
         setSession(nextSession);
         setKeepaliveStatus("active");
         setLastKeepaliveAt(new Date().toISOString());
+
         setConnection((current) => ({
           ...current,
           sessionId: nextSession.id,
           localPeerId: senderPeerId,
           remotePeerId: nextSession.receiverPeerId,
           status:
-            current.status === "ready"
-              ? "ready"
-              : current.status === "syncing_metadata"
-                ? "syncing_metadata"
-                : current.status === "connected"
-                  ? "connected"
-                  : current.status === "closed" && nextSession.receiverPeerId
-                    ? "closed"
-                    : nextSession.receiverPeerId
-                      ? "connecting"
-                      : "waiting_for_peer",
+            current.status === "transferring"
+              ? "transferring"
+              : current.status === "ready"
+                ? "ready"
+                : current.status === "syncing_metadata"
+                  ? "syncing_metadata"
+                  : current.status === "connected"
+                    ? "connected"
+                    : current.status === "closed" && nextSession.receiverPeerId
+                      ? "closed"
+                      : nextSession.receiverPeerId
+                        ? "connecting"
+                        : "waiting_for_peer",
           errorMessage: null,
         }));
       } catch {
@@ -261,7 +310,9 @@ export default function Home() {
               }
             : current,
         );
+
         setKeepaliveStatus("error");
+
         setConnection((current) => ({
           ...current,
           status: "closed",
@@ -287,6 +338,7 @@ export default function Home() {
     setIsClosingSession(false);
     setKeepaliveStatus("idle");
     setLastKeepaliveAt(null);
+
     setConnection((current) => ({
       ...current,
       sessionId: null,
@@ -330,6 +382,7 @@ export default function Home() {
     setHasCopiedLink(false);
     setKeepaliveStatus("idle");
     setLastKeepaliveAt(null);
+
     setConnection((current) => ({
       ...current,
       status: "connecting",
@@ -347,6 +400,7 @@ export default function Home() {
           files: selectedFiles.map(toTransferFileSummary),
         }),
       });
+
       const data: unknown = await response.json();
 
       if (!response.ok) {
@@ -362,10 +416,10 @@ export default function Home() {
       }
 
       const nextSession = data as TransferSession;
-
       setSession(nextSession);
       setKeepaliveStatus("active");
       setLastKeepaliveAt(new Date().toISOString());
+
       setConnection((current) => ({
         ...current,
         sessionId: nextSession.id,
@@ -376,20 +430,19 @@ export default function Home() {
       }));
     } catch (error) {
       const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "Failed to create transfer link.";
+        error instanceof Error ? error.message : "Failed to create transfer link.";
 
       setSession(null);
       setCreateLinkError(errorMessage);
       setKeepaliveStatus("error");
       setLastKeepaliveAt(null);
+
       setConnection((current) => ({
         ...current,
         sessionId: null,
         remotePeerId: null,
         status: "failed",
-        errorMessage,
+        errorMessage: errorMessage,
       }));
     } finally {
       setIsCreatingLink(false);
@@ -407,6 +460,7 @@ export default function Home() {
       const response = await fetch(`/api/sessions/${session.id}/close`, {
         method: "POST",
       });
+
       const data: unknown = await response.json();
 
       if (!response.ok) {
@@ -422,9 +476,9 @@ export default function Home() {
       }
 
       const nextSession = data as TransferSession;
-
       setSession(nextSession);
       setKeepaliveStatus("idle");
+
       setConnection((current) => ({
         ...current,
         sessionId: nextSession.id,
@@ -435,9 +489,7 @@ export default function Home() {
       }));
     } catch (error) {
       const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "Failed to close transfer session.";
+        error instanceof Error ? error.message : "Failed to close transfer session.";
 
       setConnection((current) => ({
         ...current,
@@ -472,9 +524,11 @@ export default function Home() {
           <p className="text-sm uppercase tracking-[0.2em] text-zinc-400">
             Sender
           </p>
+
           <h1 className="mt-4 text-4xl font-bold tracking-tight sm:text-6xl">
             Send files directly
           </h1>
+
           <p className="mt-4 max-w-2xl text-sm leading-6 text-zinc-400 sm:text-base">
             Select files on this device, generate a share link, and prepare for
             direct browser-to-browser delivery.
@@ -488,6 +542,7 @@ export default function Home() {
             >
               Choose files
             </button>
+
             <button
               type="button"
               onClick={handleClearSelection}
@@ -519,9 +574,7 @@ export default function Home() {
           <TransferCard
             canCreateLink={isReadyToCreateLink}
             isCreatingLink={isCreatingLink}
-            shareUrl={
-              session?.status === "closed" ? null : session?.shareUrl ?? null
-            }
+            shareUrl={session?.status === "closed" ? null : session?.shareUrl ?? null}
             onCreateLink={handleCreateLink}
             onCopyLink={handleCopyLink}
             hasCopiedLink={hasCopiedLink}
@@ -537,6 +590,58 @@ export default function Home() {
               totalSize={session.totalSize}
               formatBytes={formatBytes}
             />
+          )}
+
+          {session && senderTransferStream.status === "streaming" && (
+            <div className="mt-6 w-full max-w-md rounded-2xl border border-blue-900/60 bg-blue-950/30 px-4 py-4 text-left">
+              <p className="text-xs uppercase tracking-wide text-blue-400">
+                Sender stream
+              </p>
+
+              <p className="mt-2 text-sm text-blue-100">
+                Streaming file chunks over the live peer channel.
+              </p>
+
+              <div className="mt-4 grid gap-3 text-sm">
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-blue-200/70">File</span>
+                  <span className="font-medium text-blue-100">
+                    {senderTransferStream.fileName ?? "Unknown"}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-blue-200/70">Bytes sent</span>
+                  <span className="font-medium text-blue-100">
+                    {formatBytes(senderTransferStream.bytesSent)}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-blue-200/70">Offset</span>
+                  <span className="font-medium text-blue-100">
+                    {senderTransferStream.offset}
+                  </span>
+                </div>
+              </div>
+
+              <p className="mt-4 text-xs text-blue-200/80">
+                This commit wires sender-side chunk streaming only. Receiver-side
+                chunk handling and acknowledgements land in the next phase-3 commits.
+              </p>
+            </div>
+          )}
+
+          {session && senderTransferStream.status === "failed" && (
+            <div className="mt-6 w-full max-w-md rounded-2xl border border-red-900/60 bg-red-950/40 px-4 py-4 text-left">
+              <p className="text-xs uppercase tracking-wide text-red-400">
+                Sender stream
+              </p>
+
+              <p className="mt-2 text-sm text-red-100">
+                {senderTransferStream.errorMessage ?? "Sender-side streaming failed."}
+              </p>
+            </div>
           )}
 
           {session && (
