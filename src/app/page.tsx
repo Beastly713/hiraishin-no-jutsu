@@ -413,12 +413,12 @@ export default function Home() {
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
-
     if (!files) {
       return;
     }
 
     setSelectedFiles(Array.from(files));
+    setTransferPassword("");
     resetSenderState();
   };
 
@@ -462,6 +462,7 @@ export default function Home() {
         body: JSON.stringify({
           senderPeerId,
           files: selectedFiles.map(toTransferFileSummary),
+          transferPassword,
         }),
       });
 

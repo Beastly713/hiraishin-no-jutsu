@@ -59,6 +59,7 @@ export class InMemorySessionRepository implements SessionRepository {
     senderPeerId,
     files,
     origin,
+    transferPassword: _transferPassword,
   }: CreateTransferSessionInput): TransferSession {
     const id = createSessionId();
     const createdAt = new Date().toISOString();

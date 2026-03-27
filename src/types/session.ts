@@ -26,4 +26,5 @@ export type CreateTransferSessionInput = {
   senderPeerId: string;
   files: TransferFileSummary[];
   origin: string;
+  transferPassword?: string | null;
 };

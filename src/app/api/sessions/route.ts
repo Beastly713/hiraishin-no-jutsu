@@ -6,6 +6,7 @@ import { TransferFileSummary } from "@/types/session";
 type CreateSessionRequestBody = {
   senderPeerId?: unknown;
   files?: unknown;
+  transferPassword?: unknown;
 };
 
 function isValidFileSummary(value: unknown): value is TransferFileSummary {
@@ -22,6 +23,14 @@ function isValidFileSummary(value: unknown): value is TransferFileSummary {
     Number.isFinite(candidate.size) &&
     candidate.size >= 0 &&
     typeof candidate.type === "string"
+  );
+}
+
+function isValidTransferPassword(value: unknown) {
+  return (
+    value === undefined ||
+    value === null ||
+    (typeof value === "string" && value.length <= 256)
   );
 }
 
@@ -58,10 +67,21 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (!isValidTransferPassword(body.transferPassword)) {
+    return NextResponse.json(
+      { error: "Transfer password must be a string up to 256 characters." },
+      { status: 400 },
+    );
+  }
+
   const session = createTransferSession({
     senderPeerId: body.senderPeerId,
     files: body.files,
     origin: request.nextUrl.origin,
+    transferPassword:
+      typeof body.transferPassword === "string" && body.transferPassword.length > 0
+        ? body.transferPassword
+        : null,
   });
 
   return NextResponse.json(session, { status: 201 });
