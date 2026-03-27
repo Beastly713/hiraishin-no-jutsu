@@ -194,4 +194,26 @@ export class InMemorySessionRepository implements SessionRepository {
 
     return toPublicSession(nextSession);
   }
+
+  verifySessionPassword(id: string, password: string) {
+    const stored = getSessionStore().get(id);
+
+    if (!stored) {
+      return null;
+    }
+
+    const isExpired = Date.parse(stored.session.expiresAt) <= Date.now();
+
+    if (isExpired || stored.session.status === "closed") {
+      clearTimeout(stored.timeoutId);
+      getSessionStore().delete(id);
+      return null;
+    }
+
+    if (!stored.session.hasPassword) {
+      return true;
+    }
+
+    return stored.session.transferPassword === password;
+  }
 }

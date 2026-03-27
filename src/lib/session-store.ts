@@ -5,18 +5,25 @@ export function createTransferSession(input: CreateTransferSessionInput) {
   return getSessionRepository().createSession(input);
 }
 
-export function getTransferSession(id: string) {
-  return getSessionRepository().getSession(id);
+export function getTransferSession(sessionId: string) {
+  return getSessionRepository().getSession(sessionId);
 }
 
-export function touchTransferSession(id: string) {
-  return getSessionRepository().touchSession(id);
+export function touchTransferSession(sessionId: string) {
+  return getSessionRepository().touchSession(sessionId);
 }
 
-export function closeTransferSession(id: string) {
-  return getSessionRepository().closeSession(id);
+export function closeTransferSession(sessionId: string) {
+  return getSessionRepository().closeSession(sessionId);
 }
 
-export function joinTransferSession(id: string, receiverPeerId: string) {
-  return getSessionRepository().joinSession(id, receiverPeerId);
+export function joinTransferSession(sessionId: string, receiverPeerId: string) {
+  return getSessionRepository().joinSession(sessionId, receiverPeerId);
+}
+
+export function verifyTransferSessionPassword(
+  sessionId: string,
+  password: string,
+) {
+  return getSessionRepository().verifySessionPassword(sessionId, password);
 }

@@ -10,6 +10,7 @@ export interface SessionRepository {
   touchSession(id: string): TransferSession | null;
   closeSession(id: string): TransferSession | null;
   joinSession(id: string, receiverPeerId: string): TransferSession | null;
+  verifySessionPassword(id: string, password: string): boolean | null;
 }
 
 declare global {

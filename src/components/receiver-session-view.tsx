@@ -26,9 +26,7 @@ type ReceiverSessionViewProps = {
 
 const SESSION_POLL_INTERVAL_MS = 5000;
 
-export function ReceiverSessionView({
-  sessionId,
-}: ReceiverSessionViewProps) {
+export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
   const browserPeer = useBrowserPeer();
   const receiverPeerId = browserPeer.peerId;
 
@@ -39,6 +37,7 @@ export function ReceiverSessionView({
   const [transferPassword, setTransferPassword] = useState("");
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
+  const [hasUnlockedPasswordGate, setHasUnlockedPasswordGate] = useState(false);
   const lastAutoDownloadedUrlRef = useRef<string | null>(null);
 
   const [connection, setConnection] = useState<TransferConnectionState>(() =>
@@ -296,10 +295,14 @@ export function ReceiverSessionView({
         errorMessage: receiverTransferCompletion.errorMessage,
       }));
     }
-  }, [
-    receiverTransferCompletion.errorMessage,
-    receiverTransferCompletion.status,
-  ]);
+  }, [receiverTransferCompletion.errorMessage, receiverTransferCompletion.status]);
+
+  useEffect(() => {
+    setTransferPassword("");
+    setPasswordError(null);
+    setIsSubmittingPassword(false);
+    setHasUnlockedPasswordGate(false);
+  }, [sessionId, session?.hasPassword]);
 
   useEffect(() => {
     if (!isValidId) {
@@ -442,9 +445,7 @@ export function ReceiverSessionView({
         }
 
         const errorMessage =
-          error instanceof Error
-            ? error.message
-            : "Failed to load transfer session.";
+          error instanceof Error ? error.message : "Failed to load transfer session.";
 
         setSession(null);
         setLookupError(errorMessage);
@@ -506,21 +507,59 @@ export function ReceiverSessionView({
     setTransportRetryNonce((current) => current + 1);
   };
 
-  const handleSubmitPassword = () => {
+  const handleSubmitPassword = async () => {
+    if (!session?.id || transferPassword.length === 0 || isSubmittingPassword) {
+      return;
+    }
+
     setIsSubmittingPassword(true);
     setPasswordError(null);
 
-    window.setTimeout(() => {
+    try {
+      const response = await fetch(`/api/sessions/${session.id}/verify-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          password: transferPassword,
+        }),
+      });
+
+      const data: unknown = await response.json();
+
+      if (!response.ok) {
+        const errorMessage =
+          typeof data === "object" &&
+          data !== null &&
+          "error" in data &&
+          typeof data.error === "string"
+            ? data.error
+            : "Failed to verify transfer password.";
+
+        throw new Error(errorMessage);
+      }
+
+      setHasUnlockedPasswordGate(true);
+      setPasswordError(null);
+    } catch (error) {
+      setHasUnlockedPasswordGate(false);
+      setPasswordError(
+        error instanceof Error
+          ? error.message
+          : "Failed to verify transfer password.",
+      );
+    } finally {
       setIsSubmittingPassword(false);
-    }, 150);
+    }
   };
 
   const requiresPassword = Boolean(session?.hasPassword);
-  const hasUnlockedPasswordGate = !requiresPassword;
+  const isPasswordGateSatisfied = !requiresPassword || hasUnlockedPasswordGate;
 
   const isRetrying = connection.status === "resolving_session";
   const canShowStartCard =
-    hasUnlockedPasswordGate &&
+    isPasswordGateSatisfied &&
     (connection.status === "ready" ||
       (receiverTransferMetadata.status === "ready" &&
         receiverTransferStart.status !== "started" &&
@@ -528,9 +567,7 @@ export function ReceiverSessionView({
 
   return (
     <div className="w-full max-w-2xl rounded-3xl border border-zinc-800 bg-zinc-900/60 p-8 shadow-xl">
-      <p className="text-sm uppercase tracking-[0.2em] text-zinc-400">
-        Receiver
-      </p>
+      <p className="text-sm uppercase tracking-[0.2em] text-zinc-400">Receiver</p>
 
       <h1 className="mt-4 text-3xl font-bold tracking-tight sm:text-5xl">
         Incoming transfer
@@ -568,7 +605,7 @@ export function ReceiverSessionView({
           />
         )}
 
-        {requiresPassword && (
+        {requiresPassword && !hasUnlockedPasswordGate && (
           <ReceiverPasswordCard
             value={transferPassword}
             onChange={setTransferPassword}
@@ -730,9 +767,7 @@ export function ReceiverSessionView({
 
         {connection.status === "failed" && (
           <div className="rounded-2xl border border-red-900/60 bg-red-950/40 px-4 py-4">
-            <p className="text-xs uppercase tracking-wide text-red-400">
-              Status
-            </p>
+            <p className="text-xs uppercase tracking-wide text-red-400">Status</p>
 
             <p className="mt-2 text-sm text-red-100">
               {connection.errorMessage ?? lookupError ?? "Transfer failed."}
