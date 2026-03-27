@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { ReceiverPasswordCard } from "@/components/receiver-password-card";
 import { SessionFileList } from "@/components/session-file-list";
 import { TransferConnectionCard } from "@/components/transfer-connection-card";
 import { TransferReadyCard } from "@/components/transfer-ready-card";
@@ -35,6 +36,9 @@ export function ReceiverSessionView({
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [retryNonce, setRetryNonce] = useState(0);
   const [transportRetryNonce, setTransportRetryNonce] = useState(0);
+  const [transferPassword, setTransferPassword] = useState("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
   const lastAutoDownloadedUrlRef = useRef<string | null>(null);
 
   const [connection, setConnection] = useState<TransferConnectionState>(() =>
@@ -502,12 +506,25 @@ export function ReceiverSessionView({
     setTransportRetryNonce((current) => current + 1);
   };
 
+  const handleSubmitPassword = () => {
+    setIsSubmittingPassword(true);
+    setPasswordError(null);
+
+    window.setTimeout(() => {
+      setIsSubmittingPassword(false);
+    }, 150);
+  };
+
+  const requiresPassword = Boolean(session?.hasPassword);
+  const hasUnlockedPasswordGate = !requiresPassword;
+
   const isRetrying = connection.status === "resolving_session";
   const canShowStartCard =
-    connection.status === "ready" ||
-    (receiverTransferMetadata.status === "ready" &&
-      receiverTransferStart.status !== "started" &&
-      receiverTransferDownload.completedDownloads.length === 0);
+    hasUnlockedPasswordGate &&
+    (connection.status === "ready" ||
+      (receiverTransferMetadata.status === "ready" &&
+        receiverTransferStart.status !== "started" &&
+        receiverTransferDownload.completedDownloads.length === 0));
 
   return (
     <div className="w-full max-w-2xl rounded-3xl border border-zinc-800 bg-zinc-900/60 p-8 shadow-xl">
@@ -548,6 +565,16 @@ export function ReceiverSessionView({
                 : session?.totalSize ?? 0
             }
             formatBytes={formatBytes}
+          />
+        )}
+
+        {requiresPassword && (
+          <ReceiverPasswordCard
+            value={transferPassword}
+            onChange={setTransferPassword}
+            onSubmit={handleSubmitPassword}
+            isSubmitting={isSubmittingPassword}
+            errorMessage={passwordError}
           />
         )}
 
