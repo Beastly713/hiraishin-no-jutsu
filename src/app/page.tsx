@@ -3,6 +3,7 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { FileList } from "@/components/file-list";
 import { PageShell } from "@/components/page-shell";
+import { PasswordField } from "@/components/password-field";
 import { SessionSummaryCard } from "@/components/session-summary-card";
 import { TransferCard } from "@/components/transfer-card";
 import { TransferConnectionCard } from "@/components/transfer-connection-card";
@@ -34,6 +35,7 @@ function toTransferFileSummary(file: File): TransferFileSummary {
 
 export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [transferPassword, setTransferPassword] = useState("");
   const [session, setSession] = useState<TransferSession | null>(null);
   const [hasCopiedLink, setHasCopiedLink] = useState(false);
   const [isCreatingLink, setIsCreatingLink] = useState(false);
@@ -426,6 +428,7 @@ export default function Home() {
 
   const handleClearSelection = () => {
     setSelectedFiles([]);
+    setTransferPassword("");
     resetSenderState();
 
     if (fileInputRef.current) {
@@ -636,6 +639,12 @@ export default function Home() {
               formatBytes={formatBytes}
             />
           )}
+
+          <PasswordField
+            value={transferPassword}
+            onChange={setTransferPassword}
+            disabled={selectedFiles.length === 0 || isCreatingLink}
+          />
 
           <TransferCard
             canCreateLink={isReadyToCreateLink}
