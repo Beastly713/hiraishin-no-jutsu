@@ -100,6 +100,13 @@ export function SessionSummaryCard({
         </div>
 
         <div className="flex items-center justify-between gap-4">
+          <span className="text-zinc-400">Password</span>
+          <span className="font-medium text-zinc-200">
+            {session.hasPassword ? "Required" : "None"}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
           <span className="text-zinc-400">Files</span>
           <span className="font-medium text-zinc-200">{session.fileCount}</span>
         </div>

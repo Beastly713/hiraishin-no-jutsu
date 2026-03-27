@@ -7,8 +7,12 @@ import { SessionRepository } from "@/lib/session-repository";
 
 const SESSION_TTL_MS = 1000 * 60 * 60;
 
+type PersistedTransferSession = TransferSession & {
+  transferPassword: string | null;
+};
+
 type StoredTransferSession = {
-  session: TransferSession;
+  session: PersistedTransferSession;
   timeoutId: ReturnType<typeof setTimeout>;
 };
 
@@ -41,7 +45,24 @@ function scheduleSessionExpiry(sessionId: string) {
   }, SESSION_TTL_MS);
 }
 
-function storeTransferSession(session: TransferSession) {
+function toPublicSession(session: PersistedTransferSession): TransferSession {
+  return {
+    id: session.id,
+    senderPeerId: session.senderPeerId,
+    receiverPeerId: session.receiverPeerId,
+    receiverJoinedAt: session.receiverJoinedAt,
+    shareUrl: session.shareUrl,
+    files: session.files,
+    fileCount: session.fileCount,
+    totalSize: session.totalSize,
+    createdAt: session.createdAt,
+    expiresAt: session.expiresAt,
+    status: session.status,
+    hasPassword: session.hasPassword,
+  };
+}
+
+function storeTransferSession(session: PersistedTransferSession) {
   const existing = getSessionStore().get(session.id);
 
   if (existing) {
@@ -59,12 +80,12 @@ export class InMemorySessionRepository implements SessionRepository {
     senderPeerId,
     files,
     origin,
-    transferPassword: _transferPassword,
+    transferPassword,
   }: CreateTransferSessionInput): TransferSession {
     const id = createSessionId();
     const createdAt = new Date().toISOString();
 
-    const session: TransferSession = {
+    const session: PersistedTransferSession = {
       id,
       senderPeerId,
       receiverPeerId: null,
@@ -76,11 +97,13 @@ export class InMemorySessionRepository implements SessionRepository {
       createdAt,
       expiresAt: createExpiresAt(),
       status: "ready",
+      hasPassword: Boolean(transferPassword),
+      transferPassword: transferPassword ?? null,
     };
 
     storeTransferSession(session);
 
-    return session;
+    return toPublicSession(session);
   }
 
   getSession(id: string) {
@@ -98,7 +121,7 @@ export class InMemorySessionRepository implements SessionRepository {
       return null;
     }
 
-    return stored.session;
+    return toPublicSession(stored.session);
   }
 
   touchSession(id: string) {
@@ -116,7 +139,7 @@ export class InMemorySessionRepository implements SessionRepository {
       return null;
     }
 
-    const nextSession: TransferSession = {
+    const nextSession: PersistedTransferSession = {
       ...stored.session,
       expiresAt: createExpiresAt(),
       status: "ready",
@@ -124,7 +147,7 @@ export class InMemorySessionRepository implements SessionRepository {
 
     storeTransferSession(nextSession);
 
-    return nextSession;
+    return toPublicSession(nextSession);
   }
 
   closeSession(id: string) {
@@ -134,7 +157,7 @@ export class InMemorySessionRepository implements SessionRepository {
       return null;
     }
 
-    const nextSession: TransferSession = {
+    const nextSession: PersistedTransferSession = {
       ...stored.session,
       status: "closed",
       expiresAt: new Date().toISOString(),
@@ -143,7 +166,7 @@ export class InMemorySessionRepository implements SessionRepository {
     clearTimeout(stored.timeoutId);
     getSessionStore().delete(id);
 
-    return nextSession;
+    return toPublicSession(nextSession);
   }
 
   joinSession(id: string, receiverPeerId: string) {
@@ -161,7 +184,7 @@ export class InMemorySessionRepository implements SessionRepository {
       return null;
     }
 
-    const nextSession: TransferSession = {
+    const nextSession: PersistedTransferSession = {
       ...stored.session,
       receiverPeerId,
       receiverJoinedAt: new Date().toISOString(),
@@ -169,6 +192,6 @@ export class InMemorySessionRepository implements SessionRepository {
 
     storeTransferSession(nextSession);
 
-    return nextSession;
+    return toPublicSession(nextSession);
   }
 }

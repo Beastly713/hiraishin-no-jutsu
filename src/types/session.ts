@@ -20,6 +20,7 @@ export type TransferSession = {
   createdAt: string;
   expiresAt: string;
   status: TransferSessionStatus;
+  hasPassword: boolean;
 };
 
 export type CreateTransferSessionInput = {
