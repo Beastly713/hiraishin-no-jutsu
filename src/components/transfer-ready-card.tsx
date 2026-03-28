@@ -5,6 +5,9 @@ type TransferReadyCardProps = {
   fileCount: number;
   totalSize: number;
   formatBytes: (bytes: number) => string;
+  onStart: () => void;
+  isStarting?: boolean;
+  startDisabled?: boolean;
 };
 
 function getDeviceLabel(connection: TransferConnectionState) {
@@ -34,6 +37,9 @@ export function TransferReadyCard({
   fileCount,
   totalSize,
   formatBytes,
+  onStart,
+  isStarting = false,
+  startDisabled = false,
 }: TransferReadyCardProps) {
   return (
     <div className="mt-6 w-full max-w-2xl rounded-2xl border border-emerald-900/60 bg-emerald-950/30 px-4 py-4 text-left">
@@ -88,6 +94,17 @@ export function TransferReadyCard({
             {formatBytes(totalSize)}
           </span>
         </div>
+      </div>
+
+      <div className="mt-6">
+        <button
+          type="button"
+          onClick={onStart}
+          disabled={startDisabled || isStarting}
+          className="inline-flex items-center justify-center rounded-full border border-emerald-700 px-4 py-2 text-sm font-medium text-emerald-100 transition hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isStarting ? "Starting download..." : "Start download"}
+        </button>
       </div>
     </div>
   );

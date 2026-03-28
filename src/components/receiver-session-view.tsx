@@ -8,7 +8,6 @@ import { TransferConnectionCard } from "@/components/transfer-connection-card";
 import { TransferReadyCard } from "@/components/transfer-ready-card";
 import { formatBytes } from "@/lib/format";
 import { createTransferConnectionState } from "@/lib/transfer-connection";
-import { isTransferReadyToStart } from "@/lib/transfer-readiness";
 import { isValidSessionId } from "@/lib/session";
 import { useBrowserPeer } from "@/lib/use-browser-peer";
 import { useReceiverTransferCompletion } from "@/lib/use-receiver-transfer-completion";
@@ -542,6 +541,10 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
     setTransportRetryNonce((current) => current + 1);
   };
 
+  const handleStartDownload = () => {
+    receiverTransferStart.startTransfer();
+  };
+
   const handleSubmitPassword = async () => {
     if (
       !session?.id ||
@@ -609,7 +612,6 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
   const isPasswordGateSatisfied = !requiresPassword || hasUnlockedPasswordGate;
   const shouldRevealProtectedMetadata =
     !requiresPassword || hasUnlockedPasswordGate;
-
   const isRetrying = connection.status === "resolving_session";
   const canShowStartCard =
     isPasswordGateSatisfied &&
@@ -627,8 +629,9 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
       </h1>
 
       <p className="mt-4 text-sm leading-6 text-zinc-400 sm:text-base">
-        Resolve the shared session and prepare for the upcoming direct transfer
-        flow.
+        {shouldRevealProtectedMetadata
+          ? "Resolve the shared session and prepare for the upcoming direct transfer flow."
+          : "This transfer is protected. Enter the password from the sender to reveal the transfer details and continue."}
       </p>
 
       <div className="mt-8 grid gap-4">
@@ -641,83 +644,37 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
 
         <TransferConnectionCard connection={connection} />
 
-        {isTransferReadyToStart(connection.status) && (
+        {session && canShowStartCard && (
           <TransferReadyCard
             connection={connection}
-            fileCount={
-              connection.progress.totalFiles > 0
-                ? connection.progress.totalFiles
-                : session?.fileCount ?? 0
-            }
-            totalSize={
-              connection.progress.totalBytesTotal > 0
-                ? connection.progress.totalBytesTotal
-                : session?.totalSize ?? 0
-            }
+            fileCount={session.fileCount}
+            totalSize={session.totalSize}
             formatBytes={formatBytes}
+            onStart={handleStartDownload}
+            isStarting={receiverTransferStart.status === "started"}
+            startDisabled={
+              !receiverTransferStart.canStart ||
+              receiverTransferStart.status === "starting" ||
+              receiverTransferStart.status === "started" ||
+              connection.status === "transferring"
+            }
           />
         )}
 
-        {requiresPassword && !hasUnlockedPasswordGate && (
-          <ReceiverPasswordCard
-            value={transferPassword}
-            onChange={setTransferPassword}
-            onSubmit={handleSubmitPassword}
-            isSubmitting={isSubmittingPassword}
-            errorMessage={passwordError}
-          />
-        )}
-
-        {canShowStartCard && (
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
-            <p className="text-xs uppercase tracking-wide text-zinc-500">
-              Transfer start
-            </p>
-
-            <p className="mt-2 text-sm text-zinc-200">
-              {receiverTransferStart.status === "started"
-                ? `Transfer start requested for ${receiverTransferStart.requestedFileName}.`
-                : "The live channel is ready. Start the first file request from the receiver side."}
-            </p>
-
-            <p className="mt-1 text-xs text-zinc-400">
-              The first request is manual. After that, the receiver will request
-              subsequent files sequentially.
-            </p>
-
-            {receiverTransferStart.errorMessage && (
-              <div className="mt-4 rounded-xl border border-red-900/60 bg-red-950/40 px-4 py-3">
-                <p className="text-sm text-red-200">
-                  {receiverTransferStart.errorMessage}
-                </p>
-              </div>
-            )}
-
-            <div className="mt-4 flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={receiverTransferStart.startTransfer}
-                disabled={!receiverTransferStart.canStart}
-                className="inline-flex items-center rounded-full bg-zinc-100 px-5 py-3 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
-              >
-                {receiverTransferStart.status === "starting"
-                  ? "Starting..."
-                  : receiverTransferStart.status === "started"
-                    ? "Download requested"
-                    : "Start download"}
-              </button>
-
-              {receiverTransferMetadata.infoPayload?.files[0] && (
-                <span className="inline-flex items-center rounded-full border border-zinc-800 px-4 py-3 text-xs text-zinc-400">
-                  First file: {receiverTransferMetadata.infoPayload.files[0].name}
-                </span>
-              )}
-            </div>
+        {session && requiresPassword && !hasUnlockedPasswordGate && (
+          <div className="mt-6 w-full">
+            <ReceiverPasswordCard
+              value={transferPassword}
+              onChange={setTransferPassword}
+              onSubmit={handleSubmitPassword}
+              isSubmitting={isSubmittingPassword}
+              errorMessage={passwordError}
+            />
           </div>
         )}
 
-        {(connection.status === "transferring" ||
-          receiverTransferDownload.completedDownloads.length > 0) && (
+        {connection.status === "transferring" ||
+        receiverTransferDownload.completedDownloads.length > 0 ? (
           <div className="rounded-2xl border border-blue-900/60 bg-blue-950/30 px-4 py-4">
             <p className="text-xs uppercase tracking-wide text-blue-400">
               Download progress
@@ -764,7 +721,7 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
               </div>
             </div>
           </div>
-        )}
+        ) : null}
 
         {receiverTransferDownload.completedDownloads.length > 0 && (
           <div className="rounded-2xl border border-emerald-900/60 bg-emerald-950/30 px-4 py-4">
@@ -934,21 +891,25 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
           </div>
         )}
 
-        {session && requiresPassword && !hasUnlockedPasswordGate && (
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
-            <p className="text-xs uppercase tracking-wide text-zinc-500">
-              Transfer details
-            </p>
-            <p className="mt-2 text-sm text-zinc-300">
-              File names and sizes are hidden until the transfer password is
-              verified.
-            </p>
-          </div>
-        )}
-
-        {session && shouldRevealProtectedMetadata && (
+        {session && shouldRevealProtectedMetadata ? (
           <SessionFileList files={session.files} />
-        )}
+        ) : session && requiresPassword ? (
+          <div className="mt-6 w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4 text-left">
+            <p className="text-xs uppercase tracking-wide text-zinc-500">
+              Protected transfer
+            </p>
+            <p className="mt-2 text-sm text-zinc-200">
+              File names and transfer details are hidden until the correct password is
+              entered.
+            </p>
+            <div className="mt-4 grid gap-3 text-sm">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-zinc-400">Status</span>
+                <span className="font-medium text-zinc-100">Locked</span>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
