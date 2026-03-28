@@ -609,7 +609,6 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
   };
 
   const requiresPassword = Boolean(session?.hasPassword);
-  const isPasswordGateSatisfied = !requiresPassword || hasUnlockedPasswordGate;
   const shouldRevealProtectedMetadata =
     !requiresPassword || hasUnlockedPasswordGate;
   const isLockedProtectedSession = requiresPassword && !hasUnlockedPasswordGate;
@@ -633,8 +632,8 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
 
       <p className="mt-4 text-sm leading-6 text-zinc-400 sm:text-base">
         {shouldRevealProtectedMetadata
-          ? "Resolve the shared session and prepare for the upcoming direct transfer flow."
-          : "This transfer is protected. Enter the password from the sender to unlock the transfer and continue."}
+          ? "The transfer details are ready. Review the session and start the download when you are ready."
+          : "This transfer is protected. Enter the password from the sender to unlock the transfer details and continue."}
       </p>
 
       <div className="mt-8 grid gap-4">
@@ -654,8 +653,8 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
             </p>
 
             <p className="mt-2 text-sm text-amber-100">
-              This transfer is locked. Enter the sender’s password to reveal the
-              files and continue to download readiness.
+              This transfer is locked. Enter the sender&apos;s password to reveal the
+              file details and continue to download readiness.
             </p>
           </div>
         )}
@@ -917,8 +916,8 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
               Protected transfer
             </p>
             <p className="mt-2 text-sm text-zinc-200">
-              File names and transfer details are hidden until the correct password is
-              entered.
+              File names and transfer details stay hidden until the correct
+              password is entered.
             </p>
           </div>
         ) : null}
