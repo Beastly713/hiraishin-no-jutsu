@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isValidSessionId } from "@/lib/session";
-import { verifyTransferSessionPassword } from "@/lib/session-store";
+import {
+  getTransferSession,
+  verifyTransferSessionPassword,
+} from "@/lib/session-store";
 
 type RouteContext = {
   params: Promise<{
@@ -59,5 +62,20 @@ export async function POST(
     );
   }
 
-  return NextResponse.json({ ok: true }, { status: 200 });
+  const session = getTransferSession(sessionId);
+
+  if (!session) {
+    return NextResponse.json(
+      { error: "Transfer session not found." },
+      { status: 404 },
+    );
+  }
+
+  return NextResponse.json(
+    {
+      ok: true,
+      session,
+    },
+    { status: 200 },
+  );
 }

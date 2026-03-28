@@ -304,6 +304,84 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
     setHasUnlockedPasswordGate(false);
   }, [sessionId, session?.hasPassword]);
 
+  const joinUnlockedSession = async (
+    nextSession: TransferSession,
+    peerId: string,
+  ) => {
+    if (nextSession.status === "closed") {
+      setConnection((current) => ({
+        ...current,
+        sessionId: nextSession.id,
+        localPeerId: peerId,
+        remotePeerId: nextSession.senderPeerId,
+        status: "closed",
+        errorMessage: "This transfer session is closed.",
+      }));
+      return;
+    }
+
+    if (nextSession.receiverPeerId !== peerId) {
+      const joinResponse = await fetch(`/api/sessions/${nextSession.id}/join`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          receiverPeerId: peerId,
+        }),
+      });
+
+      const joinData: unknown = await joinResponse.json();
+
+      if (!joinResponse.ok) {
+        const errorMessage =
+          typeof joinData === "object" &&
+          joinData !== null &&
+          "error" in joinData &&
+          typeof joinData.error === "string"
+            ? joinData.error
+            : "Failed to join transfer session.";
+
+        throw new Error(errorMessage);
+      }
+
+      const joinedSession = joinData as TransferSession;
+
+      setSession(joinedSession);
+      setConnection((current) => ({
+        ...current,
+        sessionId: joinedSession.id,
+        localPeerId: peerId,
+        remotePeerId: joinedSession.senderPeerId,
+        status: "connecting",
+        errorMessage: null,
+      }));
+
+      return;
+    }
+
+    setSession(nextSession);
+    setConnection((current) => ({
+      ...current,
+      sessionId: nextSession.id,
+      localPeerId: peerId,
+      remotePeerId: nextSession.senderPeerId,
+      status:
+        current.status === "completed"
+          ? "completed"
+          : current.status === "transferring"
+            ? "transferring"
+            : current.status === "ready"
+              ? "ready"
+              : current.status === "syncing_metadata"
+                ? "syncing_metadata"
+                : current.status === "connected"
+                  ? "connected"
+                  : "connecting",
+      errorMessage: null,
+    }));
+  };
+
   useEffect(() => {
     if (!isValidId) {
       setSession(null);
@@ -322,6 +400,7 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
       return;
     }
 
+    const currentReceiverPeerId = receiverPeerId;
     let isCancelled = false;
     let intervalId: number | null = null;
 
@@ -338,7 +417,7 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
           current.status === "closed"
             ? current.status
             : "resolving_session",
-        localPeerId: receiverPeerId,
+        localPeerId: currentReceiverPeerId,
         errorMessage: null,
       }));
 
@@ -372,7 +451,7 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
           setConnection((current) => ({
             ...current,
             sessionId: nextSession.id,
-            localPeerId: receiverPeerId,
+            localPeerId: currentReceiverPeerId,
             remotePeerId: nextSession.senderPeerId,
             status: "closed",
             errorMessage: "This transfer session is closed.",
@@ -380,78 +459,34 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
           return;
         }
 
-        if (nextSession.receiverPeerId !== receiverPeerId) {
-          const joinResponse = await fetch(`/api/sessions/${sessionId}/join`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              receiverPeerId,
-            }),
-          });
-          const joinData: unknown = await joinResponse.json();
-
-          if (!joinResponse.ok) {
-            const errorMessage =
-              typeof joinData === "object" &&
-              joinData !== null &&
-              "error" in joinData &&
-              typeof joinData.error === "string"
-                ? joinData.error
-                : "Failed to join transfer session.";
-            throw new Error(errorMessage);
-          }
-
-          if (isCancelled) {
-            return;
-          }
-
-          const joinedSession = joinData as TransferSession;
-          setSession(joinedSession);
+        if (nextSession.hasPassword && !hasUnlockedPasswordGate) {
           setConnection((current) => ({
             ...current,
-            sessionId: joinedSession.id,
-            localPeerId: receiverPeerId,
-            remotePeerId: joinedSession.senderPeerId,
-            status: "connecting",
+            sessionId: nextSession.id,
+            localPeerId: currentReceiverPeerId,
+            remotePeerId: null,
+            status: "resolving_session",
             errorMessage: null,
           }));
           return;
         }
 
-        setConnection((current) => ({
-          ...current,
-          sessionId: nextSession.id,
-          localPeerId: receiverPeerId,
-          remotePeerId: nextSession.senderPeerId,
-          status:
-            current.status === "completed"
-              ? "completed"
-              : current.status === "transferring"
-                ? "transferring"
-                : current.status === "ready"
-                  ? "ready"
-                  : current.status === "syncing_metadata"
-                    ? "syncing_metadata"
-                    : current.status === "connected"
-                      ? "connected"
-                      : "connecting",
-          errorMessage: null,
-        }));
+        await joinUnlockedSession(nextSession, currentReceiverPeerId);
       } catch (error) {
         if (isCancelled) {
           return;
         }
 
         const errorMessage =
-          error instanceof Error ? error.message : "Failed to load transfer session.";
+          error instanceof Error
+            ? error.message
+            : "Failed to load transfer session.";
 
         setSession(null);
         setLookupError(errorMessage);
         setConnection((current) => ({
           ...current,
-          localPeerId: receiverPeerId,
+          localPeerId: currentReceiverPeerId,
           remotePeerId: null,
           status: "failed",
           errorMessage,
@@ -472,7 +507,7 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
         window.clearInterval(intervalId);
       }
     };
-  }, [isValidId, receiverPeerId, retryNonce, sessionId]);
+  }, [hasUnlockedPasswordGate, isValidId, receiverPeerId, retryNonce, sessionId]);
 
   useEffect(() => {
     const latestDownload =
@@ -508,7 +543,12 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
   };
 
   const handleSubmitPassword = async () => {
-    if (!session?.id || transferPassword.length === 0 || isSubmittingPassword) {
+    if (
+      !session?.id ||
+      !receiverPeerId ||
+      transferPassword.length === 0 ||
+      isSubmittingPassword
+    ) {
       return;
     }
 
@@ -516,15 +556,19 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
     setPasswordError(null);
 
     try {
-      const response = await fetch(`/api/sessions/${session.id}/verify-password`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const response = await fetch(
+        `/api/sessions/${session.id}/verify-password`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            receiverPeerId,
+            password: transferPassword,
+          }),
         },
-        body: JSON.stringify({
-          password: transferPassword,
-        }),
-      });
+      );
 
       const data: unknown = await response.json();
 
@@ -540,8 +584,15 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
         throw new Error(errorMessage);
       }
 
+      if (typeof data !== "object" || data === null || !("session" in data)) {
+        throw new Error("Password verification response was incomplete.");
+      }
+
+      const verifiedSession = data.session as TransferSession;
+
       setHasUnlockedPasswordGate(true);
       setPasswordError(null);
+      await joinUnlockedSession(verifiedSession, receiverPeerId);
     } catch (error) {
       setHasUnlockedPasswordGate(false);
       setPasswordError(
@@ -556,6 +607,8 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
 
   const requiresPassword = Boolean(session?.hasPassword);
   const isPasswordGateSatisfied = !requiresPassword || hasUnlockedPasswordGate;
+  const shouldRevealProtectedMetadata =
+    !requiresPassword || hasUnlockedPasswordGate;
 
   const isRetrying = connection.status === "resolving_session";
   const canShowStartCard =
@@ -857,13 +910,17 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
 
               <div className="flex items-center justify-between gap-4">
                 <span className="text-zinc-400">Files</span>
-                <span className="font-medium text-zinc-100">{session.fileCount}</span>
+                <span className="font-medium text-zinc-100">
+                  {shouldRevealProtectedMetadata ? session.fileCount : "Locked"}
+                </span>
               </div>
 
               <div className="flex items-center justify-between gap-4">
                 <span className="text-zinc-400">Total size</span>
                 <span className="font-medium text-zinc-100">
-                  {formatBytes(session.totalSize)}
+                  {shouldRevealProtectedMetadata
+                    ? formatBytes(session.totalSize)
+                    : "Locked"}
                 </span>
               </div>
 
@@ -877,7 +934,21 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
           </div>
         )}
 
-        {session && <SessionFileList files={session.files} />}
+        {session && requiresPassword && !hasUnlockedPasswordGate && (
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
+            <p className="text-xs uppercase tracking-wide text-zinc-500">
+              Transfer details
+            </p>
+            <p className="mt-2 text-sm text-zinc-300">
+              File names and sizes are hidden until the transfer password is
+              verified.
+            </p>
+          </div>
+        )}
+
+        {session && shouldRevealProtectedMetadata && (
+          <SessionFileList files={session.files} />
+        )}
       </div>
     </div>
   );

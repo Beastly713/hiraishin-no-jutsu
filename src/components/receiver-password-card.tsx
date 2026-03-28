@@ -55,7 +55,7 @@ export function ReceiverPasswordCard({
           {isSubmitting ? "Checking..." : "Unlock transfer"}
         </button>
         <span className="inline-flex items-center rounded-full border border-zinc-800 px-4 py-3 text-xs text-zinc-400">
-          UI only for now
+          Unlock before joining
         </span>
       </div>
     </div>
