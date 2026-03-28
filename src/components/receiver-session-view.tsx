@@ -651,7 +651,7 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
             totalSize={session.totalSize}
             formatBytes={formatBytes}
             onStart={handleStartDownload}
-            isStarting={receiverTransferStart.status === "started"}
+            isStarting={receiverTransferStart.status === "starting"}
             startDisabled={
               !receiverTransferStart.canStart ||
               receiverTransferStart.status === "starting" ||
