@@ -1,4 +1,7 @@
-import { getSessionRepository } from "@/lib/session-repository";
+import {
+  JoinSessionResult,
+  getSessionRepository,
+} from "@/lib/session-repository";
 import { CreateTransferSessionInput } from "@/types/session";
 
 export function createTransferSession(input: CreateTransferSessionInput) {
@@ -17,13 +20,21 @@ export function closeTransferSession(sessionId: string) {
   return getSessionRepository().closeSession(sessionId);
 }
 
-export function joinTransferSession(sessionId: string, receiverPeerId: string) {
+export function joinTransferSession(
+  sessionId: string,
+  receiverPeerId: string,
+): JoinSessionResult {
   return getSessionRepository().joinSession(sessionId, receiverPeerId);
 }
 
 export function verifyTransferSessionPassword(
   sessionId: string,
+  receiverPeerId: string,
   password: string,
 ) {
-  return getSessionRepository().verifySessionPassword(sessionId, password);
+  return getSessionRepository().verifySessionPassword(
+    sessionId,
+    receiverPeerId,
+    password,
+  );
 }

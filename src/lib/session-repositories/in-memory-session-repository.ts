@@ -3,12 +3,16 @@ import {
   CreateTransferSessionInput,
   TransferSession,
 } from "@/types/session";
-import { SessionRepository } from "@/lib/session-repository";
+import {
+  JoinSessionResult,
+  SessionRepository,
+} from "@/lib/session-repository";
 
 const SESSION_TTL_MS = 1000 * 60 * 60;
 
 type PersistedTransferSession = TransferSession & {
   transferPassword: string | null;
+  authorizedReceiverPeerId: string | null;
 };
 
 type StoredTransferSession = {
@@ -99,6 +103,7 @@ export class InMemorySessionRepository implements SessionRepository {
       status: "ready",
       hasPassword: Boolean(transferPassword),
       transferPassword: transferPassword ?? null,
+      authorizedReceiverPeerId: null,
     };
 
     storeTransferSession(session);
@@ -169,11 +174,11 @@ export class InMemorySessionRepository implements SessionRepository {
     return toPublicSession(nextSession);
   }
 
-  joinSession(id: string, receiverPeerId: string) {
+  joinSession(id: string, receiverPeerId: string): JoinSessionResult {
     const stored = getSessionStore().get(id);
 
     if (!stored) {
-      return null;
+      return { ok: false, reason: "not_found" };
     }
 
     const isExpired = Date.parse(stored.session.expiresAt) <= Date.now();
@@ -181,7 +186,14 @@ export class InMemorySessionRepository implements SessionRepository {
     if (isExpired || stored.session.status === "closed") {
       clearTimeout(stored.timeoutId);
       getSessionStore().delete(id);
-      return null;
+      return { ok: false, reason: "not_found" };
+    }
+
+    if (
+      stored.session.hasPassword &&
+      stored.session.authorizedReceiverPeerId !== receiverPeerId
+    ) {
+      return { ok: false, reason: "unauthorized" };
     }
 
     const nextSession: PersistedTransferSession = {
@@ -192,10 +204,13 @@ export class InMemorySessionRepository implements SessionRepository {
 
     storeTransferSession(nextSession);
 
-    return toPublicSession(nextSession);
+    return {
+      ok: true,
+      session: toPublicSession(nextSession),
+    };
   }
 
-  verifySessionPassword(id: string, password: string) {
+  verifySessionPassword(id: string, receiverPeerId: string, password: string) {
     const stored = getSessionStore().get(id);
 
     if (!stored) {
@@ -214,6 +229,17 @@ export class InMemorySessionRepository implements SessionRepository {
       return true;
     }
 
-    return stored.session.transferPassword === password;
+    if (stored.session.transferPassword !== password) {
+      return false;
+    }
+
+    const nextSession: PersistedTransferSession = {
+      ...stored.session,
+      authorizedReceiverPeerId: receiverPeerId,
+    };
+
+    storeTransferSession(nextSession);
+
+    return true;
   }
 }

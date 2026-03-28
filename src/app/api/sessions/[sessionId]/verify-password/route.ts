@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isValidPeerId } from "@/lib/peer";
 import { isValidSessionId } from "@/lib/session";
 import {
   getTransferSession,
@@ -12,6 +13,7 @@ type RouteContext = {
 };
 
 type VerifyPasswordRequestBody = {
+  receiverPeerId?: unknown;
   password?: unknown;
 };
 
@@ -39,6 +41,16 @@ export async function POST(
     );
   }
 
+  if (
+    typeof body.receiverPeerId !== "string" ||
+    !isValidPeerId(body.receiverPeerId)
+  ) {
+    return NextResponse.json(
+      { error: "A valid receiver peer id is required." },
+      { status: 400 },
+    );
+  }
+
   if (typeof body.password !== "string") {
     return NextResponse.json(
       { error: "A password is required." },
@@ -46,7 +58,11 @@ export async function POST(
     );
   }
 
-  const result = verifyTransferSessionPassword(sessionId, body.password);
+  const result = verifyTransferSessionPassword(
+    sessionId,
+    body.receiverPeerId,
+    body.password,
+  );
 
   if (result === null) {
     return NextResponse.json(

@@ -47,14 +47,24 @@ export async function POST(
     );
   }
 
-  const session = joinTransferSession(sessionId, body.receiverPeerId);
+  const result = joinTransferSession(sessionId, body.receiverPeerId);
 
-  if (!session) {
+  if (!result.ok) {
+    if (result.reason === "unauthorized") {
+      return NextResponse.json(
+        {
+          error:
+            "Password verification is required before joining this protected transfer session.",
+        },
+        { status: 403 },
+      );
+    }
+
     return NextResponse.json(
       { error: "Transfer session not found." },
       { status: 404 },
     );
   }
 
-  return NextResponse.json(session, { status: 200 });
+  return NextResponse.json(result.session, { status: 200 });
 }

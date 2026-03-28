@@ -4,13 +4,21 @@ import {
 } from "@/types/session";
 import { InMemorySessionRepository } from "@/lib/session-repositories/in-memory-session-repository";
 
+export type JoinSessionResult =
+  | { ok: true; session: TransferSession }
+  | { ok: false; reason: "not_found" | "unauthorized" };
+
 export interface SessionRepository {
   createSession(input: CreateTransferSessionInput): TransferSession;
   getSession(id: string): TransferSession | null;
   touchSession(id: string): TransferSession | null;
   closeSession(id: string): TransferSession | null;
-  joinSession(id: string, receiverPeerId: string): TransferSession | null;
-  verifySessionPassword(id: string, password: string): boolean | null;
+  joinSession(id: string, receiverPeerId: string): JoinSessionResult;
+  verifySessionPassword(
+    id: string,
+    receiverPeerId: string,
+    password: string,
+  ): boolean | null;
 }
 
 declare global {
