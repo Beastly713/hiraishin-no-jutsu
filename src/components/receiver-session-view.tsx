@@ -612,9 +612,10 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
   const isPasswordGateSatisfied = !requiresPassword || hasUnlockedPasswordGate;
   const shouldRevealProtectedMetadata =
     !requiresPassword || hasUnlockedPasswordGate;
+  const isLockedProtectedSession = requiresPassword && !hasUnlockedPasswordGate;
   const isRetrying = connection.status === "resolving_session";
   const canShowStartCard =
-    isPasswordGateSatisfied &&
+    !isLockedProtectedSession &&
     (connection.status === "ready" ||
       (receiverTransferMetadata.status === "ready" &&
         receiverTransferStart.status !== "started" &&
@@ -633,7 +634,7 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
       <p className="mt-4 text-sm leading-6 text-zinc-400 sm:text-base">
         {shouldRevealProtectedMetadata
           ? "Resolve the shared session and prepare for the upcoming direct transfer flow."
-          : "This transfer is protected. Enter the password from the sender to reveal the transfer details and continue."}
+          : "This transfer is protected. Enter the password from the sender to unlock the transfer and continue."}
       </p>
 
       <div className="mt-8 grid gap-4">
@@ -645,6 +646,19 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
         </div>
 
         <TransferConnectionCard connection={connection} />
+
+        {session && isLockedProtectedSession && (
+          <div className="rounded-2xl border border-amber-900/60 bg-amber-950/30 px-4 py-4">
+            <p className="text-xs uppercase tracking-wide text-amber-400">
+              Protected transfer
+            </p>
+
+            <p className="mt-2 text-sm text-amber-100">
+              This transfer is locked. Enter the sender’s password to reveal the
+              files and continue to download readiness.
+            </p>
+          </div>
+        )}
 
         {session && canShowStartCard && (
           <TransferReadyCard
@@ -664,7 +678,7 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
         )}
 
         {session && requiresPassword && !hasUnlockedPasswordGate && (
-          <div className="mt-6 w-full">
+          <div className="w-full">
             <ReceiverPasswordCard
               value={transferPassword}
               onChange={setTransferPassword}
@@ -906,12 +920,6 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
               File names and transfer details are hidden until the correct password is
               entered.
             </p>
-            <div className="mt-4 grid gap-3 text-sm">
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-zinc-400">Status</span>
-                <span className="font-medium text-zinc-100">Locked</span>
-              </div>
-            </div>
           </div>
         ) : null}
       </div>
