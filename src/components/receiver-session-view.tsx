@@ -622,7 +622,9 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
 
   return (
     <div className="w-full max-w-2xl rounded-3xl border border-zinc-800 bg-zinc-900/60 p-8 shadow-xl">
-      <p className="text-sm uppercase tracking-[0.2em] text-zinc-400">Receiver</p>
+      <p className="text-sm uppercase tracking-[0.2em] text-zinc-400">
+        Receiver
+      </p>
 
       <h1 className="mt-4 text-3xl font-bold tracking-tight sm:text-5xl">
         Incoming transfer
@@ -777,7 +779,9 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
 
         {connection.status === "failed" && (
           <div className="rounded-2xl border border-red-900/60 bg-red-950/40 px-4 py-4">
-            <p className="text-xs uppercase tracking-wide text-red-400">Status</p>
+            <p className="text-xs uppercase tracking-wide text-red-400">
+              Status
+            </p>
 
             <p className="mt-2 text-sm text-red-100">
               {connection.errorMessage ?? lookupError ?? "Transfer failed."}
@@ -894,7 +898,7 @@ export function ReceiverSessionView({ sessionId }: ReceiverSessionViewProps) {
         {session && shouldRevealProtectedMetadata ? (
           <SessionFileList files={session.files} />
         ) : session && requiresPassword ? (
-          <div className="mt-6 w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4 text-left">
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4 text-left">
             <p className="text-xs uppercase tracking-wide text-zinc-500">
               Protected transfer
             </p>
